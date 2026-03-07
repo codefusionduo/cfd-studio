@@ -3,11 +3,33 @@ import { useEditorStore } from '../../store/editorStore';
 import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown } from 'lucide-react';
 import clsx from 'clsx';
 
+const Playhead = ({ zoom }: { zoom: number }) => {
+  const currentTime = useEditorStore(state => state.currentTime);
+  return (
+    <div 
+      className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none"
+      style={{ left: currentTime * zoom }}
+    >
+      <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rotate-45" />
+    </div>
+  );
+};
+
+const TimeDisplay = () => {
+  const currentTime = useEditorStore(state => state.currentTime);
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 100);
+    return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+  };
+  return <span className="font-mono text-sm text-white/70">{formatTime(currentTime)}</span>;
+};
+
 export default function Timeline() {
   const { 
     tracks, 
     assets,
-    currentTime, 
     setCurrentTime, 
     isPlaying, 
     setIsPlaying, 
@@ -26,6 +48,7 @@ export default function Timeline() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragStartX, setDragStartX] = useState<number>(0);
   const [itemStartX, setItemStartX] = useState<number>(0);
+  const [snapLine, setSnapLine] = useState<number | null>(null);
   
   // Trimming state
   const [trimmingState, setTrimmingState] = useState<{
@@ -45,6 +68,14 @@ export default function Timeline() {
     startX: number;
   } | null>(null);
 
+  const tracksRef = useRef(tracks);
+  const assetsRef = useRef(assets);
+  
+  useEffect(() => {
+    tracksRef.current = tracks;
+    assetsRef.current = assets;
+  }, [tracks, assets]);
+
   // Sort tracks by layer descending for display (Top layer at top of list)
   const sortedTracks = [...tracks].sort((a, b) => b.layer - a.layer);
 
@@ -61,17 +92,15 @@ export default function Timeline() {
     let lastTime = performance.now();
     
     const animate = (time: number) => {
-      if (!isPlaying) {
+      if (!useEditorStore.getState().isPlaying) {
         lastTime = time;
         return;
       }
       
-      // Determine when to stop playback
-      // If we have content, stop at the end of content.
-      // If no content, stop at default duration.
+      const currentStoreTime = useEditorStore.getState().currentTime;
       const stopTime = contentDuration > 0 ? contentDuration : duration;
 
-      if (currentTime >= stopTime) {
+      if (currentStoreTime >= stopTime) {
         setIsPlaying(false);
         return;
       }
@@ -79,7 +108,7 @@ export default function Timeline() {
       const deltaTime = (time - lastTime) / 1000;
       lastTime = time;
       
-      const newTime = currentTime + deltaTime;
+      const newTime = currentStoreTime + deltaTime;
       
       if (newTime >= stopTime) {
         setCurrentTime(stopTime);
@@ -91,6 +120,7 @@ export default function Timeline() {
     };
 
     if (isPlaying) {
+      lastTime = performance.now();
       animationRef.current = requestAnimationFrame(animate);
     } else {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
@@ -99,7 +129,7 @@ export default function Timeline() {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [isPlaying, currentTime, duration, contentDuration, setCurrentTime, setIsPlaying]);
+  }, [isPlaying, duration, contentDuration, setCurrentTime, setIsPlaying]);
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (draggingId) return; // Don't seek if dragging
@@ -141,6 +171,7 @@ export default function Timeline() {
 
   const handleSplit = () => {
     if (selectedItemId) {
+      const currentTime = useEditorStore.getState().currentTime;
       splitTrackItem(selectedItemId, currentTime);
     }
   };
@@ -196,7 +227,7 @@ export default function Timeline() {
       if (fadingState) {
         const deltaX = e.clientX - fadingState.startX;
         const deltaSeconds = deltaX / zoom;
-        const item = tracks.find(t => t.id === fadingState.id);
+        const item = tracksRef.current.find(t => t.id === fadingState.id);
         if (!item) return;
 
         if (fadingState.side === 'in') {
@@ -215,30 +246,55 @@ export default function Timeline() {
       if (trimmingState) {
         const deltaX = e.clientX - trimmingState.startX;
         const deltaTime = deltaX / zoom;
-        const item = tracks.find(t => t.id === trimmingState.id);
-        const asset = assets.find(a => a.id === item?.assetId);
+        const item = tracksRef.current.find(t => t.id === trimmingState.id);
+        const asset = assetsRef.current.find(a => a.id === item?.assetId);
         
         if (!item) return;
+
+        const snapThreshold = 10 / zoom;
+        const snapPoints = [0, useEditorStore.getState().currentTime];
+        tracksRef.current.forEach(t => {
+          if (t.id !== trimmingState.id) {
+            snapPoints.push(t.start);
+            snapPoints.push(t.start + t.duration);
+          }
+        });
+
+        let activeSnapLine: number | null = null;
+        let minDiff = snapThreshold;
 
         if (trimmingState.side === 'start') {
           // Trimming start
           let newStart = trimmingState.initialStart + deltaTime;
-          let newDuration = trimmingState.initialDuration - deltaTime;
-          let newOffset = trimmingState.initialOffset + deltaTime;
+          
+          snapPoints.forEach(point => {
+            const diff = Math.abs(newStart - point);
+            if (diff < minDiff) {
+              minDiff = diff;
+              newStart = point;
+              activeSnapLine = point;
+            }
+          });
+
+          let newDuration = trimmingState.initialDuration - (newStart - trimmingState.initialStart);
+          let newOffset = trimmingState.initialOffset + (newStart - trimmingState.initialStart);
 
           // Constraints
           if (newDuration < 0.1) {
             newDuration = 0.1;
             newStart = trimmingState.initialStart + (trimmingState.initialDuration - 0.1);
             newOffset = trimmingState.initialOffset + (trimmingState.initialDuration - 0.1);
+            activeSnapLine = null;
           }
           
           if (newOffset < 0) {
             newOffset = 0;
             newStart = trimmingState.initialStart - trimmingState.initialOffset;
             newDuration = trimmingState.initialDuration + trimmingState.initialOffset;
+            activeSnapLine = null;
           }
 
+          setSnapLine(activeSnapLine);
           updateTrackItem(trimmingState.id, {
             start: newStart,
             duration: newDuration,
@@ -246,17 +302,35 @@ export default function Timeline() {
           });
         } else {
           // Trimming end
-          let newDuration = trimmingState.initialDuration + deltaTime;
+          let newEnd = trimmingState.initialStart + trimmingState.initialDuration + deltaTime;
+
+          snapPoints.forEach(point => {
+            const diff = Math.abs(newEnd - point);
+            if (diff < minDiff) {
+              minDiff = diff;
+              newEnd = point;
+              activeSnapLine = point;
+            }
+          });
+
+          let newDuration = newEnd - trimmingState.initialStart;
 
           // Constraints
-          if (newDuration < 0.1) newDuration = 0.1;
+          if (newDuration < 0.1) {
+             newDuration = 0.1;
+             activeSnapLine = null;
+          }
           
           // Max duration constraint if asset is video/audio
           if (asset && asset.duration) {
             const maxDuration = asset.duration - item.offset;
-            if (newDuration > maxDuration) newDuration = maxDuration;
+            if (newDuration > maxDuration) {
+               newDuration = maxDuration;
+               activeSnapLine = null;
+            }
           }
 
+          setSnapLine(activeSnapLine);
           updateTrackItem(trimmingState.id, {
             duration: newDuration
           });
@@ -268,15 +342,51 @@ export default function Timeline() {
       
       const deltaX = e.clientX - dragStartX;
       const deltaTime = deltaX / zoom;
-      const newStart = Math.max(0, itemStartX + deltaTime);
+      let newStart = Math.max(0, itemStartX + deltaTime);
+      const item = tracksRef.current.find(t => t.id === draggingId);
       
-      updateTrackItem(draggingId, { start: newStart });
+      if (!item) return;
+
+      const snapThreshold = 10 / zoom;
+      const snapPoints = [0, useEditorStore.getState().currentTime];
+      tracksRef.current.forEach(t => {
+        if (t.id !== draggingId) {
+          snapPoints.push(t.start);
+          snapPoints.push(t.start + t.duration);
+        }
+      });
+
+      let activeSnapLine: number | null = null;
+      let minDiff = snapThreshold;
+
+      snapPoints.forEach(point => {
+        // Check start
+        const diffStart = Math.abs(newStart - point);
+        if (diffStart < minDiff) {
+          minDiff = diffStart;
+          newStart = point;
+          activeSnapLine = point;
+        }
+        
+        // Check end
+        const newEnd = newStart + item.duration;
+        const diffEnd = Math.abs(newEnd - point);
+        if (diffEnd < minDiff) {
+          minDiff = diffEnd;
+          newStart = point - item.duration;
+          activeSnapLine = point;
+        }
+      });
+
+      setSnapLine(activeSnapLine);
+      updateTrackItem(draggingId, { start: Math.max(0, newStart) });
     };
 
     const handleMouseUp = () => {
       setDraggingId(null);
       setTrimmingState(null);
       setFadingState(null);
+      setSnapLine(null);
     };
 
     if (draggingId || trimmingState || fadingState) {
@@ -288,7 +398,7 @@ export default function Timeline() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingId, trimmingState, fadingState, dragStartX, itemStartX, zoom, updateTrackItem, tracks, assets]);
+  }, [draggingId, trimmingState, fadingState, dragStartX, itemStartX, zoom, updateTrackItem]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -305,7 +415,7 @@ export default function Timeline() {
           <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 hover:bg-white/10 rounded-full text-white">
             {isPlaying ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
           </button>
-          <span className="font-mono text-sm text-white/70">{formatTime(currentTime)}</span>
+          <TimeDisplay />
           
           <div className="h-6 w-px bg-white/10 mx-2" />
 
@@ -426,12 +536,15 @@ export default function Timeline() {
           </div>
 
           {/* Playhead */}
-          <div 
-            className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none"
-            style={{ left: currentTime * zoom }}
-          >
-            <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rotate-45" />
-          </div>
+          <Playhead zoom={zoom} />
+
+          {/* Snap Line */}
+          {snapLine !== null && (
+            <div 
+              className="absolute top-0 bottom-0 w-px bg-green-500 z-20 pointer-events-none shadow-[0_0_4px_rgba(34,197,94,0.8)]"
+              style={{ left: snapLine * zoom }}
+            />
+          )}
 
           {/* Tracks */}
           <div className="p-4 space-y-2 pt-10">

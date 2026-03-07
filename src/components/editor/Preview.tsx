@@ -26,7 +26,17 @@ const getInterpolatedValue = (item, property, currentTime, defaultValue) => {
   return item[property] ?? defaultValue;
 };
 
-const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, onChange }) => {
+const PreviewTimeDisplay = () => {
+  const currentTime = useEditorStore(state => state.currentTime);
+  return (
+    <div className="font-mono text-white bg-black/50 px-2 py-1 rounded text-sm">
+      {currentTime.toFixed(2)}s
+    </div>
+  );
+};
+
+const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => {
+  const currentTime = useEditorStore(state => state.currentTime);
   const imageRef = useRef(null);
   const trRef = useRef(null);
   const videoElementRef = useRef(document.createElement('video'));
@@ -45,6 +55,7 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
     video.playsInline = true; // Important for mobile
     video.muted = false;
     video.volume = 1.0;
+    video.preload = 'auto';
     video.load();
     
     const handleLoaded = () => setVideoLoaded(true);
@@ -93,7 +104,9 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
       volume = (item.duration - clipTime) / fadeOut;
     }
     volume = Math.max(0, Math.min(1, volume));
-    video.volume = volume;
+    if (Math.abs(video.volume - volume) > 0.01) {
+      video.volume = volume;
+    }
 
     if (isPlaying) {
       if (isVisible) {
@@ -101,7 +114,8 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
           video.currentTime = localTime;
           video.play().catch(() => {});
         }
-        if (Math.abs(video.currentTime - localTime) > 0.3 * playbackRate) {
+        // Increase threshold to prevent frequent seeking which causes stuttering
+        if (Math.abs(video.currentTime - localTime) > 1.0 * playbackRate) {
           video.currentTime = localTime;
         }
       } else {
@@ -109,7 +123,9 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
       }
     } else {
       if (!video.paused) video.pause();
-      if (isVisible) video.currentTime = localTime;
+      if (isVisible && Math.abs(video.currentTime - localTime) > 0.05) {
+        video.currentTime = localTime;
+      }
     }
   }, [currentTime, isPlaying, item.start, item.offset, item.duration, videoLoaded, asset, item.fadeIn, item.fadeOut, item.playbackRate]);
 
@@ -231,11 +247,16 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
           const img = asset.type === 'video' ? videoElementRef.current : imageBitmap;
           if (img) {
             ctx.save();
-            if (ctx._context) {
-              ctx._context.filter = `brightness(${item.brightness ?? 100}%) contrast(${item.contrast ?? 100}%) saturate(${item.saturation ?? 100}%)`;
+            const b = item.brightness ?? 100;
+            const c = item.contrast ?? 100;
+            const s = item.saturation ?? 100;
+            const hasFilter = b !== 100 || c !== 100 || s !== 100;
+            
+            if (ctx._context && hasFilter) {
+              ctx._context.filter = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
             }
             ctx.drawImage(img, 0, 0, shape.width(), shape.height());
-            if (ctx._context) {
+            if (ctx._context && hasFilter) {
               ctx._context.filter = 'none';
             }
             ctx.restore();
@@ -264,7 +285,8 @@ const MediaComponent = ({ item, isPlaying, currentTime, onSelect, isSelected, on
   );
 };
 
-const TextComponent = ({ item, onSelect, isSelected, onChange, currentTime }) => {
+const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
+  const currentTime = useEditorStore(state => state.currentTime);
   const shapeRef = useRef(null);
   const trRef = useRef(null);
 
@@ -373,7 +395,8 @@ const TextComponent = ({ item, onSelect, isSelected, onChange, currentTime }) =>
   );
 };
 
-const AudioComponent = ({ item, isPlaying, currentTime }) => {
+const AudioComponent = ({ item, isPlaying }) => {
+  const currentTime = useEditorStore(state => state.currentTime);
   const audioRef = useRef(document.createElement('audio'));
   const [loaded, setLoaded] = useState(false);
   const asset = useEditorStore(state => state.assets.find(a => a.id === item.assetId));
@@ -414,7 +437,9 @@ const AudioComponent = ({ item, isPlaying, currentTime }) => {
       volume = (item.duration - clipTime) / fadeOut;
     }
     volume = Math.max(0, Math.min(1, volume));
-    audio.volume = volume;
+    if (Math.abs(audio.volume - volume) > 0.01) {
+      audio.volume = volume;
+    }
 
     if (isPlaying) {
       if (isVisible) {
@@ -422,7 +447,7 @@ const AudioComponent = ({ item, isPlaying, currentTime }) => {
           audio.currentTime = localTime;
           audio.play().catch(() => {});
         }
-        if (Math.abs(audio.currentTime - localTime) > 0.3 * playbackRate) {
+        if (Math.abs(audio.currentTime - localTime) > 1.0 * playbackRate) {
           audio.currentTime = localTime;
         }
       } else {
@@ -430,7 +455,9 @@ const AudioComponent = ({ item, isPlaying, currentTime }) => {
       }
     } else {
       if (!audio.paused) audio.pause();
-      if (isVisible) audio.currentTime = localTime;
+      if (isVisible && Math.abs(audio.currentTime - localTime) > 0.05) {
+        audio.currentTime = localTime;
+      }
     }
   }, [currentTime, isPlaying, item.start, item.offset, item.duration, loaded, asset, item.fadeIn, item.fadeOut, item.playbackRate]);
 
@@ -440,7 +467,6 @@ const AudioComponent = ({ item, isPlaying, currentTime }) => {
 export default function Preview() {
   const { 
     tracks, 
-    currentTime, 
     isPlaying, 
     selectedItemId, 
     setSelectedItem, 
@@ -512,7 +538,6 @@ export default function Preview() {
           key={item.id} 
           item={item} 
           isPlaying={isPlaying} 
-          currentTime={currentTime} 
         />
       ))}
 
@@ -540,7 +565,6 @@ export default function Preview() {
                       key={item.id}
                       item={item}
                       isPlaying={isPlaying}
-                      currentTime={currentTime}
                       isSelected={selectedItemId === item.id}
                       onSelect={() => setSelectedItem(item.id)}
                       onChange={(newAttrs) => updateTrackItem(item.id, newAttrs)}
@@ -552,7 +576,6 @@ export default function Preview() {
                     <TextComponent
                       key={item.id}
                       item={item}
-                      currentTime={currentTime}
                       isSelected={selectedItemId === item.id}
                       onSelect={() => setSelectedItem(item.id)}
                       onChange={(newAttrs) => updateTrackItem(item.id, newAttrs)}
@@ -567,9 +590,7 @@ export default function Preview() {
       
       {/* Time Display Overlay & Full Screen Toggle */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
-        <div className="font-mono text-white bg-black/50 px-2 py-1 rounded text-sm">
-          {currentTime.toFixed(2)}s
-        </div>
+        <PreviewTimeDisplay />
         
         <select 
           value={previewZoom}
