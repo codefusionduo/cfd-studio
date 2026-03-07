@@ -289,7 +289,15 @@ export default function PropertiesPanel() {
                 max="4" 
                 step="0.25"
                 value={selectedItem.playbackRate || 1}
-                onChange={(e) => updateTrackItem(selectedItem.id, { playbackRate: Number(e.target.value) })}
+                onChange={(e) => {
+                  const newRate = Number(e.target.value);
+                  const oldRate = selectedItem.playbackRate || 1;
+                  const newDuration = Math.max(0.1, selectedItem.duration * (oldRate / newRate));
+                  updateTrackItem(selectedItem.id, { 
+                    playbackRate: newRate,
+                    duration: newDuration
+                  });
+                }}
                 className="w-full"
               />
               <div className="flex justify-between text-[10px] text-white/30 px-1">

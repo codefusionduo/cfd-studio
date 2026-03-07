@@ -263,6 +263,8 @@ export default function Timeline() {
         let activeSnapLine: number | null = null;
         let minDiff = snapThreshold;
 
+        const playbackRate = item.playbackRate || 1;
+
         if (trimmingState.side === 'start') {
           // Trimming start
           let newStart = trimmingState.initialStart + deltaTime;
@@ -277,20 +279,20 @@ export default function Timeline() {
           });
 
           let newDuration = trimmingState.initialDuration - (newStart - trimmingState.initialStart);
-          let newOffset = trimmingState.initialOffset + (newStart - trimmingState.initialStart);
+          let newOffset = trimmingState.initialOffset + (newStart - trimmingState.initialStart) * playbackRate;
 
           // Constraints
           if (newDuration < 0.1) {
             newDuration = 0.1;
             newStart = trimmingState.initialStart + (trimmingState.initialDuration - 0.1);
-            newOffset = trimmingState.initialOffset + (trimmingState.initialDuration - 0.1);
+            newOffset = trimmingState.initialOffset + (trimmingState.initialDuration - 0.1) * playbackRate;
             activeSnapLine = null;
           }
           
           if (newOffset < 0) {
             newOffset = 0;
-            newStart = trimmingState.initialStart - trimmingState.initialOffset;
-            newDuration = trimmingState.initialDuration + trimmingState.initialOffset;
+            newStart = trimmingState.initialStart - (trimmingState.initialOffset / playbackRate);
+            newDuration = trimmingState.initialDuration + (trimmingState.initialOffset / playbackRate);
             activeSnapLine = null;
           }
 
@@ -323,7 +325,7 @@ export default function Timeline() {
           
           // Max duration constraint if asset is video/audio
           if (asset && asset.duration) {
-            const maxDuration = asset.duration - item.offset;
+            const maxDuration = (asset.duration - item.offset) / playbackRate;
             if (newDuration > maxDuration) {
                newDuration = maxDuration;
                activeSnapLine = null;

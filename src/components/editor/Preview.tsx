@@ -84,7 +84,9 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     if (!videoLoaded) return;
 
     const playbackRate = item.playbackRate || 1;
-    video.playbackRate = playbackRate;
+    if (video.playbackRate !== playbackRate) {
+      video.playbackRate = playbackRate;
+    }
 
     // Calculate local time in source media
     const timelineDelta = currentTime - item.start;
@@ -418,7 +420,9 @@ const AudioComponent = ({ item, isPlaying }) => {
     const audio = audioRef.current;
     
     const playbackRate = item.playbackRate || 1;
-    audio.playbackRate = playbackRate;
+    if (audio.playbackRate !== playbackRate) {
+      audio.playbackRate = playbackRate;
+    }
 
     const timelineDelta = currentTime - item.start;
     const localTime = (timelineDelta * playbackRate) + item.offset;

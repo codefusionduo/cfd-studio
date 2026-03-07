@@ -54,6 +54,7 @@ export const useEditorStore = create<EditorStore>((set) => ({
     const splitOffset = splitTime - item.start;
     const firstHalfDuration = splitOffset;
     const secondHalfDuration = item.duration - splitOffset;
+    const playbackRate = item.playbackRate || 1;
 
     // Create second half
     const secondHalf: TrackItem = {
@@ -61,7 +62,7 @@ export const useEditorStore = create<EditorStore>((set) => ({
       id: uuidv4(),
       start: splitTime,
       duration: secondHalfDuration,
-      offset: item.offset + splitOffset,
+      offset: item.offset + (splitOffset * playbackRate),
     };
 
     // Update first half

@@ -137,9 +137,27 @@ export default function EditorLayout() {
     // Wait for seek
     await new Promise(resolve => setTimeout(resolve, 500));
 
+    const mimeTypes = [
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    let selectedMimeType = 'video/webm';
+    let extension = 'webm';
+    for (const type of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        selectedMimeType = type;
+        if (type.includes('mp4')) {
+          extension = 'mp4';
+        }
+        break;
+      }
+    }
+
     const stream = canvas.captureStream(30); // 30 FPS
     const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9'
+      mimeType: selectedMimeType
     });
 
     const chunks: Blob[] = [];
@@ -147,14 +165,38 @@ export default function EditorLayout() {
       if (e.data.size > 0) chunks.push(e.data);
     };
 
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: 'video/webm' });
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: selectedMimeType });
+      const filename = `cfd-studio-${Date.now()}.${extension}`;
+      
+      try {
+        if (navigator.share && navigator.canShare) {
+          const file = new File([blob], filename, { type: selectedMimeType });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'Exported Video',
+            });
+            setIsExporting(false);
+            setCurrentTime(0);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
-      a.download = `cfd-studio-${Date.now()}.webm`;
+      a.download = filename;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
       setIsExporting(false);
       setCurrentTime(0);
     };
