@@ -131,10 +131,21 @@ export default function Timeline() {
     };
   }, [isPlaying, duration, contentDuration, setCurrentTime, setIsPlaying]);
 
-  const handleTimelineClick = (e: React.MouseEvent) => {
-    if (draggingId) return; // Don't seek if dragging
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+
+  const handleTimelineMouseDown = (e: React.MouseEvent) => {
+    if (draggingId || trimmingState || fadingState) return;
     if (!timelineRef.current) return;
+    
     const rect = timelineRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    
+    // Check if clicking on the ruler area (top 32px)
+    if (y <= 32) {
+      setIsDraggingPlayhead(true);
+    }
+    
+    // Seek immediately on click
     const x = e.clientX - rect.left;
     const scrollLeft = timelineRef.current.scrollLeft;
     const newTime = (x + scrollLeft) / zoom;
@@ -224,6 +235,16 @@ export default function Timeline() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingPlayhead) {
+        if (!timelineRef.current) return;
+        const rect = timelineRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const scrollLeft = timelineRef.current.scrollLeft;
+        const newTime = (x + scrollLeft) / zoom;
+        setCurrentTime(Math.max(0, Math.min(effectiveDuration, newTime)));
+        return;
+      }
+
       if (fadingState) {
         const deltaX = e.clientX - fadingState.startX;
         const deltaSeconds = deltaX / zoom;
@@ -389,9 +410,10 @@ export default function Timeline() {
       setTrimmingState(null);
       setFadingState(null);
       setSnapLine(null);
+      setIsDraggingPlayhead(false);
     };
 
-    if (draggingId || trimmingState || fadingState) {
+    if (draggingId || trimmingState || fadingState || isDraggingPlayhead) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -400,7 +422,7 @@ export default function Timeline() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingId, trimmingState, fadingState, dragStartX, itemStartX, zoom, updateTrackItem]);
+  }, [draggingId, trimmingState, fadingState, isDraggingPlayhead, dragStartX, itemStartX, zoom, updateTrackItem, setCurrentTime, effectiveDuration]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -410,7 +432,7 @@ export default function Timeline() {
   };
 
   return (
-    <div className="h-72 bg-[#1e1e1e] border-t border-white/10 flex flex-col select-none">
+    <div className="h-full bg-[#1e1e1e] border-t border-white/10 flex flex-col select-none">
       {/* Toolbar */}
       <div className="h-12 border-b border-white/10 flex items-center justify-between px-4 bg-[#252525]">
         <div className="flex items-center gap-4">
@@ -514,7 +536,7 @@ export default function Timeline() {
             width: effectiveDuration * zoom + 100,
             height: Math.max(300, 60 + tracks.length * 50) 
           }}
-          onClick={handleTimelineClick}
+          onMouseDown={handleTimelineMouseDown}
         >
           {/* Ruler */}
           <div className="h-8 border-b border-white/10 flex items-end sticky top-0 bg-[#1e1e1e] z-10 pointer-events-none">

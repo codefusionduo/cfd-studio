@@ -214,6 +214,35 @@ export default function PropertiesPanel() {
               <span className="text-xs text-white w-8 text-right">{Math.round(selectedItem.rotation || 0)}°</span>
             </div>
           </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs text-white/50">Layer (Z-Index)</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => handlePropertyChange('layer', Math.max(0, (selectedItem.layer || 0) - 1))}
+                className="p-1.5 bg-white/5 hover:bg-white/10 rounded transition-colors"
+                title="Move Backward"
+              >
+                <ChevronDown size={14} />
+              </button>
+              <input 
+                type="number" 
+                min="0"
+                value={selectedItem.layer || 0}
+                onChange={(e) => handlePropertyChange('layer', Math.max(0, Number(e.target.value)))}
+                className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white text-center focus:border-blue-500 outline-none"
+              />
+              <button 
+                onClick={() => handlePropertyChange('layer', (selectedItem.layer || 0) + 1)}
+                className="p-1.5 bg-white/5 hover:bg-white/10 rounded transition-colors"
+                title="Move Forward"
+              >
+                <ChevronUp size={14} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Text Specific Properties */}

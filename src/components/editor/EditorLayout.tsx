@@ -7,7 +7,6 @@ import { Download, Settings, Scissors, Loader2 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
 import MobileLanding from '../MobileLanding';
-import LandscapePrompt from '../LandscapePrompt';
 
 function SplashScreen({ onComplete }: { onComplete: () => void }) {
   useEffect(() => {
@@ -74,6 +73,27 @@ export default function EditorLayout() {
   const [showSplash, setShowSplash] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [timelineHeight, setTimelineHeight] = useState(288); // Default 72 * 4 = 288px
+
+  const handleResizerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = timelineHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startY - moveEvent.clientY;
+      const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight - 200));
+      setTimelineHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   const aspectRatios = [
     { label: '9:16 (TikTok)', width: 1080, height: 1920 },
@@ -223,7 +243,6 @@ export default function EditorLayout() {
 
   return (
     <>
-      {isMobile && hasStarted && <LandscapePrompt />}
       <AnimatePresence>
         {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
       </AnimatePresence>
@@ -271,7 +290,18 @@ export default function EditorLayout() {
         
         <div className="flex-1 flex flex-col min-w-0">
           <Preview />
-          <Timeline />
+          
+          {/* Resizer */}
+          <div 
+            className="h-1 bg-white/10 hover:bg-cyan-500 cursor-row-resize transition-colors z-50 relative"
+            onMouseDown={handleResizerMouseDown}
+          >
+            <div className="absolute inset-x-0 -top-1 -bottom-1" />
+          </div>
+
+          <div style={{ height: timelineHeight }} className="flex-shrink-0">
+            <Timeline />
+          </div>
         </div>
         
         <PropertiesPanel />

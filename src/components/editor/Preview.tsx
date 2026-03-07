@@ -58,7 +58,13 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     video.preload = 'auto';
     video.load();
     
-    const handleLoaded = () => setVideoLoaded(true);
+    const handleLoaded = () => {
+      setVideoLoaded(true);
+      if (imageRef.current) {
+        const layer = imageRef.current.getLayer();
+        if (layer) layer.batchDraw();
+      }
+    };
     video.addEventListener('loadeddata', handleLoaded);
     
     return () => {
@@ -74,6 +80,10 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       setImageBitmap(img);
+      if (imageRef.current) {
+        const layer = imageRef.current.getLayer();
+        if (layer) layer.batchDraw();
+      }
     };
   }, [asset]);
 
@@ -113,12 +123,21 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     if (isPlaying) {
       if (isVisible) {
         if (video.paused) {
-          video.currentTime = localTime;
-          video.play().catch(() => {});
-        }
-        // Increase threshold to prevent frequent seeking which causes stuttering
-        if (Math.abs(video.currentTime - localTime) > 1.0 * playbackRate) {
-          video.currentTime = localTime;
+          // Only seek if we are far off, to avoid seeking right before play
+          if (Math.abs(video.currentTime - localTime) > 0.5) {
+            video.currentTime = localTime;
+          }
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {
+              // Autoplay prevented, we can't do much here without user interaction
+            });
+          }
+        } else {
+          // Increase threshold to prevent frequent seeking which causes stuttering
+          if (Math.abs(video.currentTime - localTime) > 1.0 * playbackRate) {
+            video.currentTime = localTime;
+          }
         }
       } else {
         if (!video.paused) video.pause();
@@ -145,7 +164,8 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     
     const update = () => {
       if (imageRef.current) {
-        imageRef.current.getLayer().batchDraw();
+        const layer = imageRef.current.getLayer();
+        if (layer) layer.batchDraw();
       }
       if (isPlaying) {
         animFrame = requestAnimationFrame(update);
@@ -158,6 +178,28 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
 
     return () => cancelAnimationFrame(animFrame);
   }, [isPlaying, asset]);
+
+  // Redraw when currentTime changes while paused
+  useEffect(() => {
+    if (!isPlaying && asset?.type === 'video' && imageRef.current) {
+      const layer = imageRef.current.getLayer();
+      if (layer) layer.batchDraw();
+    }
+  }, [currentTime, isPlaying, asset]);
+
+  // Redraw when video seeked
+  useEffect(() => {
+    if (!asset || asset.type !== 'video') return;
+    const video = videoElementRef.current;
+    const handleSeeked = () => {
+      if (imageRef.current) {
+        const layer = imageRef.current.getLayer();
+        if (layer) layer.batchDraw();
+      }
+    };
+    video.addEventListener('seeked', handleSeeked);
+    return () => video.removeEventListener('seeked', handleSeeked);
+  }, [asset]);
 
   // Calculate opacity based on fade in/out
   let opacity = 1;
@@ -172,15 +214,15 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
   }
   opacity = Math.max(0, Math.min(1, opacity));
 
-  if (!asset || currentTime < item.start || currentTime > item.start + item.duration) {
-    return null;
-  }
+  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
 
   const currentX = getInterpolatedValue(item, 'x', currentTime, item.x || 0);
   const currentY = getInterpolatedValue(item, 'y', currentTime, item.y || 0);
   const currentRotation = getInterpolatedValue(item, 'rotation', currentTime, item.rotation || 0);
   const currentWidth = getInterpolatedValue(item, 'width', currentTime, item.width || 300);
-  const currentHeight = getInterpolatedValue(item, 'height', currentTime, item.height || (asset.type === 'video' ? 500 : 300));
+  const currentHeight = getInterpolatedValue(item, 'height', currentTime, item.height || (asset?.type === 'video' ? 500 : 300));
+
+  if (!asset) return null;
 
   const handleTransformChange = (newAttrs) => {
     const clipTime = currentTime - item.start;
@@ -220,6 +262,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
         width={currentWidth}
         height={currentHeight}
         opacity={opacity}
+        visible={isVisible}
         draggable
         onClick={onSelect}
         onTap={onSelect}
@@ -247,7 +290,8 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
         }}
         sceneFunc={(ctx, shape) => {
           const img = asset.type === 'video' ? videoElementRef.current : imageBitmap;
-          if (img) {
+          const isVideoReady = asset.type !== 'video' || (img && (img as HTMLVideoElement).readyState >= 2);
+          if (img && isVideoReady) {
             ctx.save();
             const b = item.brightness ?? 100;
             const c = item.contrast ?? 100;
@@ -312,9 +356,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
   }
   opacity = Math.max(0, Math.min(1, opacity));
 
-  if (currentTime < item.start || currentTime > item.start + item.duration) {
-    return null;
-  }
+  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
 
   const currentX = getInterpolatedValue(item, 'x', currentTime, item.x || 100);
   const currentY = getInterpolatedValue(item, 'y', currentTime, item.y || 100);
@@ -358,6 +400,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
         y={currentY}
         rotation={currentRotation}
         opacity={opacity}
+        visible={isVisible}
         draggable
         onClick={onSelect}
         onTap={onSelect}
@@ -448,11 +491,17 @@ const AudioComponent = ({ item, isPlaying }) => {
     if (isPlaying) {
       if (isVisible) {
         if (audio.paused) {
-          audio.currentTime = localTime;
-          audio.play().catch(() => {});
-        }
-        if (Math.abs(audio.currentTime - localTime) > 1.0 * playbackRate) {
-          audio.currentTime = localTime;
+          if (Math.abs(audio.currentTime - localTime) > 0.5) {
+            audio.currentTime = localTime;
+          }
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {});
+          }
+        } else {
+          if (Math.abs(audio.currentTime - localTime) > 1.0 * playbackRate) {
+            audio.currentTime = localTime;
+          }
         }
       } else {
         if (!audio.paused) audio.pause();
@@ -511,9 +560,10 @@ export default function Preview() {
       
       if (previewZoom === 'fit') {
         const { offsetWidth, offsetHeight } = containerRef.current;
+        if (offsetWidth === 0 || offsetHeight === 0) return;
         const scaleW = offsetWidth / canvasSize.width;
         const scaleH = offsetHeight / canvasSize.height;
-        const newScale = Math.min(scaleW, scaleH) * 0.9; // 90% fit
+        const newScale = Math.max(0.05, Math.min(scaleW, scaleH) * 0.9); // 90% fit, min 5%
         setScale(newScale);
       } else {
         setScale(previewZoom);
