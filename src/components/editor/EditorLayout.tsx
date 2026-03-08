@@ -130,6 +130,22 @@ export default function EditorLayout() {
       // Ignore if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          useEditorStore.temporal.getState().redo();
+        } else {
+          useEditorStore.temporal.getState().undo();
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        useEditorStore.temporal.getState().redo();
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedItemId) {
           removeTrackItem(selectedItemId);

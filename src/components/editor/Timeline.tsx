@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { useStore } from 'zustand';
 import { useEditorStore } from '../../store/editorStore';
-import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2 } from 'lucide-react';
 import clsx from 'clsx';
 
 const Playhead = ({ zoom }: { zoom: number }) => {
@@ -42,6 +43,10 @@ export default function Timeline() {
     removeTrackItem,
     splitTrackItem
   } = useEditorStore();
+
+  const { undo, redo } = useEditorStore.temporal.getState();
+  const pastStates = useStore(useEditorStore.temporal, (state) => state.pastStates);
+  const futureStates = useStore(useEditorStore.temporal, (state) => state.futureStates);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number>(0);
@@ -441,6 +446,25 @@ export default function Timeline() {
           </button>
           <TimeDisplay />
           
+          <div className="h-6 w-px bg-white/10 mx-2" />
+
+          <button 
+            onClick={() => undo()}
+            disabled={pastStates.length === 0}
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            title="Undo"
+          >
+            <Undo2 size={18} />
+          </button>
+          <button 
+            onClick={() => redo()}
+            disabled={futureStates.length === 0}
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            title="Redo"
+          >
+            <Redo2 size={18} />
+          </button>
+
           <div className="h-6 w-px bg-white/10 mx-2" />
 
           <button 
