@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 interface EditorStore extends EditorState {
   addAsset: (asset: Asset) => void;
+  updateAsset: (id: string, updates: Partial<Asset>) => void;
   removeAsset: (id: string) => void;
   addTrackItem: (item: Omit<TrackItem, 'id'>) => string;
   updateTrackItem: (id: string, updates: Partial<TrackItem>) => void;
@@ -33,6 +34,10 @@ export const useEditorStore = create<EditorStore>()(
 
         addAsset: (asset) => set((state) => ({ assets: [...state.assets, asset] })),
         
+        updateAsset: (id, updates) => set((state) => ({
+          assets: state.assets.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+        })),
+
         removeAsset: (id) => set((state) => ({
           assets: state.assets.filter((a) => a.id !== id),
           // Also remove any track items that use this asset

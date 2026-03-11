@@ -35,8 +35,8 @@ export interface TrackItem {
   textAnimation?: 'none' | 'fade' | 'slide' | 'typewriter';
   fadeIn?: number; // duration in seconds
   fadeOut?: number; // duration in seconds
-  transitionInType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out';
-  transitionOutType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out';
+  transitionInType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out' | 'spin-in' | 'flip-x' | 'flip-y';
+  transitionOutType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out' | 'spin-out' | 'flip-x' | 'flip-y';
   playbackRate?: number;
   
   // Color correction

@@ -218,6 +218,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
   let displayY = currentY;
   let displayScaleX = 1;
   let displayScaleY = 1;
+  let displayRotation = currentRotation;
 
   if (fadeIn > 0 && clipTime < fadeIn) {
     const progress = clipTime / fadeIn;
@@ -241,6 +242,17 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
       displayScaleX = 2 - easeOut;
       displayScaleY = 2 - easeOut;
       opacity = progress;
+    } else if (item.transitionInType === 'spin-in') {
+      displayScaleX = easeOut;
+      displayScaleY = easeOut;
+      displayRotation = currentRotation - 180 * (1 - easeOut);
+      opacity = progress;
+    } else if (item.transitionInType === 'flip-x') {
+      displayScaleX = -1 + 2 * easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'flip-y') {
+      displayScaleY = -1 + 2 * easeOut;
+      opacity = progress;
     }
   } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
     const progress = (clipTime - (item.duration - fadeOut)) / fadeOut;
@@ -263,6 +275,17 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     } else if (item.transitionOutType === 'zoom-out') {
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'spin-out') {
+      displayScaleX = 1 - easeIn;
+      displayScaleY = 1 - easeIn;
+      displayRotation = currentRotation + 180 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'flip-x') {
+      displayScaleX = 1 - 2 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'flip-y') {
+      displayScaleY = 1 - 2 * easeIn;
       opacity = 1 - progress;
     }
   }
@@ -305,7 +328,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
         y={displayY}
         scaleX={displayScaleX}
         scaleY={displayScaleY}
-        rotation={currentRotation}
+        rotation={displayRotation}
         width={currentWidth}
         height={currentHeight}
         opacity={opacity}
@@ -416,6 +439,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
   let displayY = currentY;
   let displayScaleX = 1;
   let displayScaleY = 1;
+  let displayRotation = currentRotation;
 
   if (fadeIn > 0 && clipTime < fadeIn) {
     const progress = clipTime / fadeIn;
@@ -439,6 +463,17 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
       displayScaleX = 2 - easeOut;
       displayScaleY = 2 - easeOut;
       opacity = progress;
+    } else if (item.transitionInType === 'spin-in') {
+      displayScaleX = easeOut;
+      displayScaleY = easeOut;
+      displayRotation = currentRotation - 180 * (1 - easeOut);
+      opacity = progress;
+    } else if (item.transitionInType === 'flip-x') {
+      displayScaleX = -1 + 2 * easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'flip-y') {
+      displayScaleY = -1 + 2 * easeOut;
+      opacity = progress;
     }
   } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
     const progress = (clipTime - (item.duration - fadeOut)) / fadeOut;
@@ -461,6 +496,17 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
     } else if (item.transitionOutType === 'zoom-out') {
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'spin-out') {
+      displayScaleX = 1 - easeIn;
+      displayScaleY = 1 - easeIn;
+      displayRotation = currentRotation + 180 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'flip-x') {
+      displayScaleX = 1 - 2 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'flip-y') {
+      displayScaleY = 1 - 2 * easeIn;
       opacity = 1 - progress;
     }
   }
@@ -529,7 +575,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
         y={displayY}
         scaleX={displayScaleX}
         scaleY={displayScaleY}
-        rotation={currentRotation}
+        rotation={displayRotation}
         opacity={displayOpacity}
         visible={isVisible}
         draggable

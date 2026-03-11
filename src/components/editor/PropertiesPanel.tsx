@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond } from 'lucide-react';
+import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond, Wand2, Loader2 } from 'lucide-react';
 import AIEditPanel from './AIEditPanel';
+import { removeBackground } from '@imgly/background-removal';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function PropertiesPanel() {
-  const { selectedItemId, tracks, updateTrackItem, removeTrackItem, currentTime } = useEditorStore();
+  const { selectedItemId, tracks, assets, updateTrackItem, removeTrackItem, addAsset, currentTime } = useEditorStore();
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
   
   const selectedItem = tracks.find(t => t.id === selectedItemId);
 
@@ -45,6 +48,33 @@ export default function PropertiesPanel() {
   const hasKeyframe = (property: string) => {
     if (!selectedItem.keyframes?.[property as keyof typeof selectedItem.keyframes]) return false;
     return selectedItem.keyframes[property as keyof typeof selectedItem.keyframes]!.some(k => Math.abs(k.time - clipTime) < 0.05);
+  };
+
+  const handleRemoveBackground = async () => {
+    if (!selectedItem || selectedItem.type !== 'image') return;
+    const asset = assets.find(a => a.id === selectedItem.assetId);
+    if (!asset) return;
+
+    setIsRemovingBg(true);
+    try {
+      const blob = await removeBackground(asset.src);
+      const url = URL.createObjectURL(blob);
+      
+      const newAsset = {
+        ...asset,
+        id: uuidv4(),
+        src: url,
+        name: `${asset.name} (No BG)`
+      };
+      
+      addAsset(newAsset);
+      updateTrackItem(selectedItem.id, { assetId: newAsset.id });
+    } catch (error) {
+      console.error("Failed to remove background:", error);
+      alert("Failed to remove background.");
+    } finally {
+      setIsRemovingBg(false);
+    }
   };
 
   const handlePropertyChange = (property: string, value: number | string) => {
@@ -305,6 +335,17 @@ export default function PropertiesPanel() {
           <div className="space-y-4 pt-4 border-t border-white/10">
             <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Effects</h3>
             
+            {selectedItem.type === 'image' && (
+              <button
+                onClick={handleRemoveBackground}
+                disabled={isRemovingBg}
+                className="w-full py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 border border-purple-500/30 rounded flex items-center justify-center gap-2 text-sm text-white transition-colors disabled:opacity-50"
+              >
+                {isRemovingBg ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                {isRemovingBg ? 'Removing Background...' : 'Remove Background'}
+              </button>
+            )}
+
             <div>
               <label className="block text-xs text-white/50 mb-1">Filter Preset</label>
               <select
@@ -486,6 +527,9 @@ export default function PropertiesPanel() {
                 <option value="slide-down">Slide Down</option>
                 <option value="zoom-in">Zoom In</option>
                 <option value="zoom-out">Zoom Out</option>
+                <option value="spin-in">Spin In</option>
+                <option value="flip-x">Flip X</option>
+                <option value="flip-y">Flip Y</option>
                 <option value="none">None</option>
               </select>
               <label className="block text-xs text-white/50 mb-1">In Duration (s)</label>
@@ -513,6 +557,9 @@ export default function PropertiesPanel() {
                 <option value="slide-down">Slide Down</option>
                 <option value="zoom-in">Zoom In</option>
                 <option value="zoom-out">Zoom Out</option>
+                <option value="spin-out">Spin Out</option>
+                <option value="flip-x">Flip X</option>
+                <option value="flip-y">Flip Y</option>
                 <option value="none">None</option>
               </select>
               <label className="block text-xs text-white/50 mb-1">Out Duration (s)</label>
