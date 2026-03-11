@@ -32,14 +32,18 @@ export interface TrackItem {
   text?: string; // For text layers
   fontSize?: number;
   fontFill?: string;
+  textAnimation?: 'none' | 'fade' | 'slide' | 'typewriter';
   fadeIn?: number; // duration in seconds
   fadeOut?: number; // duration in seconds
+  transitionInType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out';
+  transitionOutType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out';
   playbackRate?: number;
   
   // Color correction
   brightness?: number; // 0 to 200, default 100
   contrast?: number; // 0 to 200, default 100
   saturation?: number; // 0 to 200, default 100
+  effect?: 'none' | 'grayscale' | 'sepia' | 'blur' | 'invert' | 'hue-rotate';
 
   // Keyframes
   keyframes?: {

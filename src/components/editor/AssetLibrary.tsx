@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useEditorStore } from '../../store/editorStore';
-import { Upload, Image as ImageIcon, Video, Music, Type } from 'lucide-react';
+import { Upload, Image as ImageIcon, Video, Music, Type, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function AssetLibrary() {
@@ -142,9 +142,26 @@ export default function AssetLibrary() {
                 <p className="text-sm text-white truncate">{asset.name}</p>
                 <p className="text-xs text-white/40">{asset.type} • {Math.round(asset.duration || 0)}s</p>
               </div>
-              <div className="opacity-0 group-hover:opacity-100 absolute right-2">
-                <button className="p-1.5 bg-blue-600 rounded-full text-white">
-                   <span className="text-xs font-bold">+</span>
+              <div className="opacity-0 group-hover:opacity-100 absolute right-2 flex items-center gap-1">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addToTimeline(asset);
+                  }}
+                  className="p-1.5 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-colors"
+                  title="Add to Timeline"
+                >
+                   <span className="text-xs font-bold flex items-center justify-center w-3 h-3">+</span>
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    useEditorStore.getState().removeAsset(asset.id);
+                  }}
+                  className="p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded-full transition-colors"
+                  title="Delete Asset"
+                >
+                   <Trash2 size={12} />
                 </button>
               </div>
             </div>

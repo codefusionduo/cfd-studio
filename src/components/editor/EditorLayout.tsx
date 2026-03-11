@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AssetLibrary from './AssetLibrary';
 import Preview from './Preview';
 import Timeline from './Timeline';
 import PropertiesPanel from './PropertiesPanel';
-import { Download, Settings, Scissors, Loader2 } from 'lucide-react';
+import { Download, Settings, Scissors, Loader2, Type, Sparkles } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
 import MobileLanding from '../MobileLanding';
+import { v4 as uuidv4 } from 'uuid';
 
 function SplashScreen({ onComplete }: { onComplete: () => void }) {
   useEffect(() => {
@@ -66,7 +67,10 @@ export default function EditorLayout() {
     selectedItemId,
     removeTrackItem,
     canvasSize,
-    setCanvasSize
+    setCanvasSize,
+    addAsset,
+    addTrackItem,
+    setSelectedItem
   } = useEditorStore();
   
   const [isExporting, setIsExporting] = useState(false);
@@ -74,6 +78,32 @@ export default function EditorLayout() {
   const [isMobile, setIsMobile] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [timelineHeight, setTimelineHeight] = useState(288); // Default 72 * 4 = 288px
+  const [isSaving, setIsSaving] = useState(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
+      // Check if any persisted state changed
+      if (
+        state.tracks !== prevState.tracks ||
+        state.assets !== prevState.assets ||
+        state.canvasSize !== prevState.canvasSize ||
+        state.duration !== prevState.duration
+      ) {
+        setIsSaving(true);
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+          setIsSaving(false);
+        }, 1000);
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   const handleResizerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -205,23 +235,6 @@ export default function EditorLayout() {
       const blob = new Blob(chunks, { type: selectedMimeType });
       const filename = `cfd-studio-${Date.now()}.${extension}`;
       
-      try {
-        if (navigator.share && navigator.canShare) {
-          const file = new File([blob], filename, { type: selectedMimeType });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: 'Exported Video',
-            });
-            setIsExporting(false);
-            setCurrentTime(0);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('Error sharing:', err);
-      }
-
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -253,6 +266,109 @@ export default function EditorLayout() {
     }, duration * 1000 + 500); // Add buffer
   };
 
+  const addTextLayer = () => {
+    useEditorStore.getState().addTrackItem({
+      assetId: 'text-asset',
+      start: 0,
+      duration: 5,
+      offset: 0,
+      layer: 2,
+      type: 'text',
+      text: 'New Text',
+      fontSize: 48,
+      fontFill: '#ffffff',
+      x: 100,
+      y: 100
+    });
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAIEditClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    const type = file.type.startsWith('video') ? 'video' : 
+                 file.type.startsWith('image') ? 'image' : 'audio';
+    
+    const asset: any = {
+      id: uuidv4(),
+      type: type as 'video' | 'image' | 'audio',
+      src: url,
+      name: file.name,
+      duration: 5 // Placeholder
+    };
+
+    const addToTimelineAndSelect = (finalAsset: any) => {
+      let width = 500;
+      let height = 500;
+      let x = 0;
+      let y = 0;
+
+      if (finalAsset.width && finalAsset.height) {
+        const scale = Math.min(
+          canvasSize.width / finalAsset.width,
+          canvasSize.height / finalAsset.height
+        );
+        width = finalAsset.width * scale;
+        height = finalAsset.height * scale;
+        x = (canvasSize.width - width) / 2;
+        y = (canvasSize.height - height) / 2;
+      }
+
+      const trackItemId = addTrackItem({
+        assetId: finalAsset.id,
+        start: 0,
+        duration: finalAsset.duration || 5,
+        offset: 0,
+        layer: 1,
+        type: finalAsset.type,
+        x,
+        y,
+        width,
+        height,
+      });
+
+      setSelectedItem(trackItemId);
+    };
+
+    if (type === 'video') {
+       const video = document.createElement('video');
+       video.src = url;
+       video.onloadedmetadata = () => {
+          asset.duration = video.duration;
+          asset.width = video.videoWidth;
+          asset.height = video.videoHeight;
+          addAsset(asset);
+          addToTimelineAndSelect(asset);
+       };
+    } else if (type === 'image') {
+       const img = new Image();
+       img.src = url;
+       img.onload = () => {
+          asset.width = img.width;
+          asset.height = img.height;
+          addAsset(asset);
+          addToTimelineAndSelect(asset);
+       };
+    } else {
+       addAsset(asset);
+       addToTimelineAndSelect(asset);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   if (isMobile && !hasStarted) {
     return <MobileLanding onStart={() => setHasStarted(true)} />;
   }
@@ -270,10 +386,35 @@ export default function EditorLayout() {
           <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
             <Scissors size={18} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight">cfd studio</h1>
+          <h1 className="font-bold text-lg tracking-tight hidden sm:block">cfd studio</h1>
+          
+          <button 
+            onClick={handleAIEditClick}
+            className="ml-2 sm:ml-4 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg flex items-center gap-2 transition-colors border border-purple-500/30"
+          >
+            <Sparkles size={16} />
+            <span className="text-sm font-medium hidden sm:block">AI Edit</span>
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="video/*,image/*,audio/*"
+            className="hidden"
+          />
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {isMobile && (
+            <button 
+              onClick={addTextLayer}
+              className="px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-500 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Type size={16} />
+              <span className="text-sm font-medium hidden sm:block">Text</span>
+            </button>
+          )}
+
           <select
             value={currentRatioLabel}
             onChange={handleRatioChange}
@@ -286,8 +427,15 @@ export default function EditorLayout() {
             ))}
           </select>
 
-          <button className="px-4 py-1.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-            Draft saved
+          <button className="px-4 py-1.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
+            {isSaving ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Draft saved'
+            )}
           </button>
           <button 
             onClick={handleExport}

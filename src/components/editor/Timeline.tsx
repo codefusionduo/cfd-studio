@@ -315,7 +315,7 @@ export default function Timeline() {
             activeSnapLine = null;
           }
           
-          if (newOffset < 0) {
+          if (newOffset < 0 && item.type !== 'image' && item.type !== 'text') {
             newOffset = 0;
             newStart = trimmingState.initialStart - (trimmingState.initialOffset / playbackRate);
             newDuration = trimmingState.initialDuration + (trimmingState.initialOffset / playbackRate);
@@ -350,7 +350,7 @@ export default function Timeline() {
           }
           
           // Max duration constraint if asset is video/audio
-          if (asset && asset.duration) {
+          if (asset && asset.duration && item.type !== 'image' && item.type !== 'text') {
             const maxDuration = (asset.duration - item.offset) / playbackRate;
             if (newDuration > maxDuration) {
                newDuration = maxDuration;
@@ -508,17 +508,36 @@ export default function Timeline() {
           <button 
             onClick={() => {
               if (selectedItemId) {
-                updateTrackItem(selectedItemId, { fadeIn: 0.5, fadeOut: 0.5 });
+                updateTrackItem(selectedItemId, { 
+                  fadeIn: 0.5, 
+                  fadeOut: 0.5,
+                  transitionInType: 'fade',
+                  transitionOutType: 'fade'
+                });
               }
             }}
             disabled={!selectedItemId} 
             className="px-3 py-1 text-xs font-medium bg-white/10 hover:bg-white/20 rounded-full text-white disabled:opacity-30 disabled:hover:bg-white/10 transition-colors"
-            title="Apply Default Fades (0.5s)"
+            title="Apply Default Transitions (0.5s Fade)"
           >
-            Add Fade
+            Add Transition
           </button>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              if (contentDuration > 0 && timelineRef.current) {
+                // Calculate zoom needed to fit content in timeline width (with a small margin)
+                const availableWidth = timelineRef.current.clientWidth - 40; // 40px margin
+                const newZoom = Math.max(5, Math.min(100, availableWidth / contentDuration));
+                setZoom(newZoom);
+              }
+            }}
+            className="px-2 py-1 mr-2 text-[10px] font-medium uppercase tracking-wider bg-white/5 hover:bg-white/10 rounded text-white/70 transition-colors"
+            title="Fit to Screen"
+          >
+            Fit
+          </button>
           <button 
             onClick={() => setZoom(Math.max(5, zoom - 5))} 
             className="p-1.5 hover:bg-white/10 rounded text-white/70 transition-colors"
@@ -640,16 +659,16 @@ export default function Timeline() {
 
                 {/* Drag Handles */}
                 <div 
-                  className="absolute left-0 top-0 bottom-0 w-3 bg-white/10 hover:bg-white/50 cursor-ew-resize z-20 flex items-center justify-center group/handle"
+                  className="absolute left-0 top-0 bottom-0 w-4 bg-white/10 hover:bg-white/30 cursor-ew-resize z-20 flex items-center justify-center group/handle transition-colors"
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'start')}
                 >
-                  <div className="w-1 h-4 bg-white/50 rounded-full group-hover/handle:bg-white" />
+                  <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
                 </div>
                 <div 
-                  className="absolute right-0 top-0 bottom-0 w-3 bg-white/10 hover:bg-white/50 cursor-ew-resize z-20 flex items-center justify-center group/handle"
+                  className="absolute right-0 top-0 bottom-0 w-4 bg-white/10 hover:bg-white/30 cursor-ew-resize z-20 flex items-center justify-center group/handle transition-colors"
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'end')}
                 >
-                  <div className="w-1 h-4 bg-white/50 rounded-full group-hover/handle:bg-white" />
+                  <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
                 </div>
                 
                 <div className="px-3 py-2 text-xs text-white truncate font-medium select-none flex items-center gap-2">

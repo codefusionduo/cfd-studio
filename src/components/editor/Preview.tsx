@@ -37,6 +37,7 @@ const PreviewTimeDisplay = () => {
 
 const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => {
   const currentTime = useEditorStore(state => state.currentTime);
+  const canvasSize = useEditorStore(state => state.canvasSize);
   const imageRef = useRef(null);
   const trRef = useRef(null);
   const videoElementRef = useRef(document.createElement('video'));
@@ -201,26 +202,70 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     return () => video.removeEventListener('seeked', handleSeeked);
   }, [asset]);
 
-  // Calculate opacity based on fade in/out
-  let opacity = 1;
+  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
   const clipTime = currentTime - item.start;
   const fadeIn = item.fadeIn || 0;
   const fadeOut = item.fadeOut || 0;
-
-  if (fadeIn > 0 && clipTime < fadeIn) {
-    opacity = clipTime / fadeIn;
-  } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
-    opacity = (item.duration - clipTime) / fadeOut;
-  }
-  opacity = Math.max(0, Math.min(1, opacity));
-
-  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
+  let opacity = 1;
 
   const currentX = getInterpolatedValue(item, 'x', currentTime, item.x || 0);
   const currentY = getInterpolatedValue(item, 'y', currentTime, item.y || 0);
   const currentRotation = getInterpolatedValue(item, 'rotation', currentTime, item.rotation || 0);
   const currentWidth = getInterpolatedValue(item, 'width', currentTime, item.width || 300);
   const currentHeight = getInterpolatedValue(item, 'height', currentTime, item.height || (asset?.type === 'video' ? 500 : 300));
+
+  let displayX = currentX;
+  let displayY = currentY;
+  let displayScaleX = 1;
+  let displayScaleY = 1;
+
+  if (fadeIn > 0 && clipTime < fadeIn) {
+    const progress = clipTime / fadeIn;
+    const easeOut = 1 - Math.pow(1 - progress, 3);
+    
+    if (item.transitionInType === 'fade' || !item.transitionInType) {
+      opacity = progress;
+    } else if (item.transitionInType === 'slide-left') {
+      displayX = currentX + canvasSize.width * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-right') {
+      displayX = currentX - canvasSize.width * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-up') {
+      displayY = currentY + canvasSize.height * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-down') {
+      displayY = currentY - canvasSize.height * (1 - easeOut);
+    } else if (item.transitionInType === 'zoom-in') {
+      displayScaleX = easeOut;
+      displayScaleY = easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'zoom-out') {
+      displayScaleX = 2 - easeOut;
+      displayScaleY = 2 - easeOut;
+      opacity = progress;
+    }
+  } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
+    const progress = (clipTime - (item.duration - fadeOut)) / fadeOut;
+    const easeIn = Math.pow(progress, 3);
+    
+    if (item.transitionOutType === 'fade' || !item.transitionOutType) {
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'slide-left') {
+      displayX = currentX - canvasSize.width * easeIn;
+    } else if (item.transitionOutType === 'slide-right') {
+      displayX = currentX + canvasSize.width * easeIn;
+    } else if (item.transitionOutType === 'slide-up') {
+      displayY = currentY - canvasSize.height * easeIn;
+    } else if (item.transitionOutType === 'slide-down') {
+      displayY = currentY + canvasSize.height * easeIn;
+    } else if (item.transitionOutType === 'zoom-in') {
+      displayScaleX = 1 + easeIn;
+      displayScaleY = 1 + easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'zoom-out') {
+      displayScaleX = 1 - easeIn;
+      displayScaleY = 1 - easeIn;
+      opacity = 1 - progress;
+    }
+  }
 
   if (!asset) return null;
 
@@ -256,8 +301,10 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
     <>
       <Shape
         ref={imageRef}
-        x={currentX}
-        y={currentY}
+        x={displayX}
+        y={displayY}
+        scaleX={displayScaleX}
+        scaleY={displayScaleY}
         rotation={currentRotation}
         width={currentWidth}
         height={currentHeight}
@@ -267,9 +314,11 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
         onClick={onSelect}
         onTap={onSelect}
         onDragEnd={(e) => {
+          const xOffset = displayX - currentX;
+          const yOffset = displayY - currentY;
           handleTransformChange({
-            x: e.target.x(),
-            y: e.target.y(),
+            x: e.target.x() - xOffset,
+            y: e.target.y() - yOffset,
           });
         }}
         onTransformEnd={(e) => {
@@ -280,9 +329,11 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
           node.scaleX(1);
           node.scaleY(1);
           
+          const xOffset = displayX - currentX;
+          const yOffset = displayY - currentY;
           handleTransformChange({
-            x: node.x(),
-            y: node.y(),
+            x: node.x() - xOffset,
+            y: node.y() - yOffset,
             width: Math.max(5, node.width() * scaleX),
             height: Math.max(5, node.height() * scaleY),
             rotation: node.rotation(),
@@ -296,10 +347,17 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
             const b = item.brightness ?? 100;
             const c = item.contrast ?? 100;
             const s = item.saturation ?? 100;
-            const hasFilter = b !== 100 || c !== 100 || s !== 100;
+            const effect = item.effect || 'none';
+            const hasFilter = b !== 100 || c !== 100 || s !== 100 || effect !== 'none';
             
             if (ctx._context && hasFilter) {
-              ctx._context.filter = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+              let filterStr = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+              if (effect === 'grayscale') filterStr += ' grayscale(100%)';
+              if (effect === 'sepia') filterStr += ' sepia(100%)';
+              if (effect === 'blur') filterStr += ' blur(10px)';
+              if (effect === 'invert') filterStr += ' invert(100%)';
+              if (effect === 'hue-rotate') filterStr += ' hue-rotate(90deg)';
+              ctx._context.filter = filterStr;
             }
             ctx.drawImage(img, 0, 0, shape.width(), shape.height());
             if (ctx._context && hasFilter) {
@@ -333,6 +391,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
 
 const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
   const currentTime = useEditorStore(state => state.currentTime);
+  const canvasSize = useEditorStore(state => state.canvasSize);
   const shapeRef = useRef(null);
   const trRef = useRef(null);
 
@@ -343,24 +402,94 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
     }
   }, [isSelected]);
 
-  // Calculate opacity based on fade in/out
-  let opacity = 1;
+  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
   const clipTime = currentTime - item.start;
   const fadeIn = item.fadeIn || 0;
   const fadeOut = item.fadeOut || 0;
-
-  if (fadeIn > 0 && clipTime < fadeIn) {
-    opacity = clipTime / fadeIn;
-  } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
-    opacity = (item.duration - clipTime) / fadeOut;
-  }
-  opacity = Math.max(0, Math.min(1, opacity));
-
-  const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
+  let opacity = 1;
 
   const currentX = getInterpolatedValue(item, 'x', currentTime, item.x || 100);
   const currentY = getInterpolatedValue(item, 'y', currentTime, item.y || 100);
   const currentRotation = getInterpolatedValue(item, 'rotation', currentTime, item.rotation || 0);
+
+  let displayX = currentX;
+  let displayY = currentY;
+  let displayScaleX = 1;
+  let displayScaleY = 1;
+
+  if (fadeIn > 0 && clipTime < fadeIn) {
+    const progress = clipTime / fadeIn;
+    const easeOut = 1 - Math.pow(1 - progress, 3);
+    
+    if (item.transitionInType === 'fade' || !item.transitionInType) {
+      opacity = progress;
+    } else if (item.transitionInType === 'slide-left') {
+      displayX = currentX + canvasSize.width * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-right') {
+      displayX = currentX - canvasSize.width * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-up') {
+      displayY = currentY + canvasSize.height * (1 - easeOut);
+    } else if (item.transitionInType === 'slide-down') {
+      displayY = currentY - canvasSize.height * (1 - easeOut);
+    } else if (item.transitionInType === 'zoom-in') {
+      displayScaleX = easeOut;
+      displayScaleY = easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'zoom-out') {
+      displayScaleX = 2 - easeOut;
+      displayScaleY = 2 - easeOut;
+      opacity = progress;
+    }
+  } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
+    const progress = (clipTime - (item.duration - fadeOut)) / fadeOut;
+    const easeIn = Math.pow(progress, 3);
+    
+    if (item.transitionOutType === 'fade' || !item.transitionOutType) {
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'slide-left') {
+      displayX = currentX - canvasSize.width * easeIn;
+    } else if (item.transitionOutType === 'slide-right') {
+      displayX = currentX + canvasSize.width * easeIn;
+    } else if (item.transitionOutType === 'slide-up') {
+      displayY = currentY - canvasSize.height * easeIn;
+    } else if (item.transitionOutType === 'slide-down') {
+      displayY = currentY + canvasSize.height * easeIn;
+    } else if (item.transitionOutType === 'zoom-in') {
+      displayScaleX = 1 + easeIn;
+      displayScaleY = 1 + easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'zoom-out') {
+      displayScaleX = 1 - easeIn;
+      displayScaleY = 1 - easeIn;
+      opacity = 1 - progress;
+    }
+  }
+
+  let displayOpacity = opacity;
+  let displayText = item.text || 'Double Click to Edit';
+
+  if (item.textAnimation === 'fade') {
+    const animDuration = Math.min(1, item.duration); // 1 second or duration
+    if (clipTime < animDuration) {
+      displayOpacity = opacity * (clipTime / animDuration);
+    }
+  } else if (item.textAnimation === 'slide') {
+    const animDuration = Math.min(1, item.duration);
+    if (clipTime < animDuration) {
+      const progress = clipTime / animDuration;
+      // ease out cubic
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      displayY = currentY + 50 * (1 - easeOut);
+      displayOpacity = opacity * easeOut;
+    }
+  } else if (item.textAnimation === 'typewriter') {
+    const animDuration = Math.min(2, item.duration); // 2 seconds for typewriter
+    if (clipTime < animDuration) {
+      const progress = clipTime / animDuration;
+      const charCount = Math.floor(displayText.length * progress);
+      displayText = displayText.substring(0, charCount);
+    }
+  }
 
   const handleTransformChange = (newAttrs) => {
     const clipTime = currentTime - item.start;
@@ -393,21 +522,25 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
     <>
       <Text
         ref={shapeRef}
-        text={item.text || 'Double Click to Edit'}
+        text={displayText}
         fontSize={item.fontSize || 24}
         fill={item.fontFill || 'white'}
-        x={currentX}
-        y={currentY}
+        x={displayX}
+        y={displayY}
+        scaleX={displayScaleX}
+        scaleY={displayScaleY}
         rotation={currentRotation}
-        opacity={opacity}
+        opacity={displayOpacity}
         visible={isVisible}
         draggable
         onClick={onSelect}
         onTap={onSelect}
         onDragEnd={(e) => {
+          const xOffset = displayX - currentX;
+          const yOffset = displayY - currentY;
           handleTransformChange({
-            x: e.target.x(),
-            y: e.target.y(),
+            x: e.target.x() - xOffset,
+            y: e.target.y() - yOffset,
           });
         }}
         onTransformEnd={(e) => {
@@ -417,9 +550,11 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
           node.scaleX(1);
           node.scaleY(1);
           
+          const xOffset = displayX - currentX;
+          const yOffset = displayY - currentY;
           handleTransformChange({
-            x: node.x(),
-            y: node.y(),
+            x: node.x() - xOffset,
+            y: node.y() - yOffset,
             fontSize: (item.fontSize || 24) * scaleX,
             rotation: node.rotation(),
           });

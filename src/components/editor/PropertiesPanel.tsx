@@ -1,6 +1,7 @@
 import React from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond } from 'lucide-react';
+import AIEditPanel from './AIEditPanel';
 
 export default function PropertiesPanel() {
   const { selectedItemId, tracks, updateTrackItem, removeTrackItem, currentTime } = useEditorStore();
@@ -86,11 +87,14 @@ export default function PropertiesPanel() {
         <h2 className="text-sm font-semibold text-white">Properties</h2>
         <button 
           onClick={() => removeTrackItem(selectedItem.id)}
-          className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors"
+          className="px-2 py-1.5 flex items-center gap-1.5 hover:bg-red-500/20 text-red-500 rounded transition-colors text-xs font-medium"
         >
-          <Trash2 size={16} />
+          <Trash2 size={14} />
+          Delete
         </button>
       </div>
+
+      <AIEditPanel />
 
       <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar">
         {/* Transform Section */}
@@ -279,6 +283,88 @@ export default function PropertiesPanel() {
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Animation Preset</label>
+              <select
+                value={selectedItem.textAnimation || 'none'}
+                onChange={(e) => updateTrackItem(selectedItem.id, { textAnimation: e.target.value as any })}
+                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
+              >
+                <option value="none">None</option>
+                <option value="fade">Fade In</option>
+                <option value="slide">Slide In (Up)</option>
+                <option value="typewriter">Typewriter</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Effects Section */}
+        {(selectedItem.type === 'video' || selectedItem.type === 'image') && (
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Effects</h3>
+            
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Filter Preset</label>
+              <select
+                value={selectedItem.effect || 'none'}
+                onChange={(e) => updateTrackItem(selectedItem.id, { effect: e.target.value as any })}
+                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
+              >
+                <option value="none">None</option>
+                <option value="grayscale">Grayscale</option>
+                <option value="sepia">Sepia</option>
+                <option value="blur">Blur</option>
+                <option value="invert">Invert</option>
+                <option value="hue-rotate">Hue Rotate</option>
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs text-white/50">Brightness</label>
+                  <span className="text-[10px] text-white/30">{selectedItem.brightness ?? 100}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="200" 
+                  value={selectedItem.brightness ?? 100}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { brightness: Number(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs text-white/50">Contrast</label>
+                  <span className="text-[10px] text-white/30">{selectedItem.contrast ?? 100}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="200" 
+                  value={selectedItem.contrast ?? 100}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { contrast: Number(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs text-white/50">Saturation</label>
+                  <span className="text-[10px] text-white/30">{selectedItem.saturation ?? 100}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="200" 
+                  value={selectedItem.saturation ?? 100}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { saturation: Number(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -387,7 +473,22 @@ export default function PropertiesPanel() {
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-white/50 mb-1">Fade In (s)</label>
+              <label className="block text-xs text-white/50 mb-1">In Type</label>
+              <select
+                value={selectedItem.transitionInType || 'fade'}
+                onChange={(e) => updateTrackItem(selectedItem.id, { transitionInType: e.target.value as any })}
+                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none mb-2"
+              >
+                <option value="fade">Fade</option>
+                <option value="slide-left">Slide Left</option>
+                <option value="slide-right">Slide Right</option>
+                <option value="slide-up">Slide Up</option>
+                <option value="slide-down">Slide Down</option>
+                <option value="zoom-in">Zoom In</option>
+                <option value="zoom-out">Zoom Out</option>
+                <option value="none">None</option>
+              </select>
+              <label className="block text-xs text-white/50 mb-1">In Duration (s)</label>
               <input 
                 type="number" 
                 step="0.1"
@@ -399,7 +500,22 @@ export default function PropertiesPanel() {
               />
             </div>
             <div>
-              <label className="block text-xs text-white/50 mb-1">Fade Out (s)</label>
+              <label className="block text-xs text-white/50 mb-1">Out Type</label>
+              <select
+                value={selectedItem.transitionOutType || 'fade'}
+                onChange={(e) => updateTrackItem(selectedItem.id, { transitionOutType: e.target.value as any })}
+                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none mb-2"
+              >
+                <option value="fade">Fade</option>
+                <option value="slide-left">Slide Left</option>
+                <option value="slide-right">Slide Right</option>
+                <option value="slide-up">Slide Up</option>
+                <option value="slide-down">Slide Down</option>
+                <option value="zoom-in">Zoom In</option>
+                <option value="zoom-out">Zoom Out</option>
+                <option value="none">None</option>
+              </select>
+              <label className="block text-xs text-white/50 mb-1">Out Duration (s)</label>
               <input 
                 type="number" 
                 step="0.1"
