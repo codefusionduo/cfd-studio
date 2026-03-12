@@ -3,7 +3,7 @@ import AssetLibrary from './AssetLibrary';
 import Preview from './Preview';
 import Timeline from './Timeline';
 import PropertiesPanel from './PropertiesPanel';
-import { Download, Settings, Scissors, Loader2, Type, Sparkles } from 'lucide-react';
+import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
 import MobileLanding from '../MobileLanding';
@@ -70,7 +70,8 @@ export default function EditorLayout() {
     setCanvasSize,
     addAsset,
     addTrackItem,
-    setSelectedItem
+    setSelectedItem,
+    clearAll
   } = useEditorStore();
   
   const [isExporting, setIsExporting] = useState(false);
@@ -154,6 +155,16 @@ export default function EditorLayout() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (isMobile && hasStarted) {
+      try {
+        if (screen.orientation && (screen.orientation as any).lock) {
+          (screen.orientation as any).lock('landscape').catch(() => {});
+        }
+      } catch (e) {}
+    }
+  }, [isMobile, hasStarted]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -248,6 +259,12 @@ export default function EditorLayout() {
       }, 100);
       setIsExporting(false);
       setCurrentTime(0);
+      
+      // Automatically clear the project after successful export
+      if (window.confirm('Video exported successfully! Would you like to clear the project and start a new one?')) {
+        useEditorStore.getState().clearAll();
+        setHasStarted(false);
+      }
     };
 
     mediaRecorder.start();
@@ -379,6 +396,25 @@ export default function EditorLayout() {
         {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
       </AnimatePresence>
       
+      {/* Portrait Mode Overlay */}
+      <div className="md:hidden portrait:flex hidden fixed inset-0 z-[200] bg-[#121212] flex-col items-center justify-center p-6 text-center">
+        <div className="w-24 h-24 mb-8 relative">
+          <motion.div 
+            className="absolute inset-0 border-4 border-cyan-500 rounded-2xl"
+            animate={{ rotate: 90 }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">Rotate your device</h2>
+        <p className="text-white/60">CFD Studio requires landscape mode for the best editing experience.</p>
+      </div>
+
       <div className="h-screen bg-[#121212] flex flex-col text-white overflow-hidden font-sans">
         {/* Header */}
       <header className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-[#1e1e1e] z-50">
@@ -405,6 +441,19 @@ export default function EditorLayout() {
         </div>
         
         <div className="flex items-center gap-2 sm:gap-3">
+          <button 
+            onClick={() => {
+              if (window.confirm('Are you sure you want to start a new project? This will delete all current assets and edits.')) {
+                clearAll();
+                setHasStarted(false);
+              }
+            }}
+            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus size={16} />
+            <span className="text-sm font-medium hidden sm:block">New</span>
+          </button>
+
           {isMobile && (
             <button 
               onClick={addTextLayer}

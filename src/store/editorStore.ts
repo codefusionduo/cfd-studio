@@ -17,6 +17,7 @@ interface EditorStore extends EditorState {
   setSelectedItem: (id: string | null) => void;
   setCanvasSize: (size: { width: number; height: number }) => void;
   setZoom: (zoom: number) => void;
+  clearAll: () => void;
 }
 
 export const useEditorStore = create<EditorStore>()(
@@ -101,12 +102,11 @@ export const useEditorStore = create<EditorStore>()(
         setSelectedItem: (id) => set({ selectedItemId: id }),
         setCanvasSize: (size) => set({ canvasSize: size }),
         setZoom: (zoom) => set({ zoom }),
+        clearAll: () => set({ assets: [], tracks: [], selectedItemId: null, currentTime: 0 }),
       }),
       {
         name: 'editor-storage',
         partialize: (state) => ({
-          tracks: state.tracks,
-          assets: state.assets,
           canvasSize: state.canvasSize,
           duration: state.duration,
         }),

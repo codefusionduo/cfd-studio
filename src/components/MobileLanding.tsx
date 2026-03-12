@@ -1,11 +1,11 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useEditorStore } from '../store/editorStore';
-import { Upload, ArrowRight, Music } from 'lucide-react';
+import { Upload, ArrowRight, Music, X, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function MobileLanding({ onStart }: { onStart: () => void }) {
-  const { addAsset, assets, addTrackItem, canvasSize } = useEditorStore();
+  const { addAsset, assets, addTrackItem, canvasSize, removeAsset, clearAll } = useEditorStore();
 
   const addToTimeline = (asset: any) => {
     let width = 500;
@@ -106,13 +106,33 @@ export default function MobileLanding({ onStart }: { onStart: () => void }) {
 
         {assets.length > 0 && (
             <div className="w-full max-w-sm space-y-2">
-                <p className="text-sm text-white/40 uppercase tracking-wider font-medium">Selected ({assets.length})</p>
-                <div className="flex gap-2 overflow-x-auto pb-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-white/40 uppercase tracking-wider font-medium">Selected ({assets.length})</p>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      clearAll();
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                  >
+                    <Trash2 size={12} /> Clear All
+                  </button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {assets.map(asset => (
-                        <div key={asset.id} className="w-16 h-16 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden border border-white/10">
+                        <div key={asset.id} className="relative w-16 h-16 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden border border-white/10 group">
                             {asset.type === 'image' && <img src={asset.src} className="w-full h-full object-cover" />}
                             {asset.type === 'video' && <video src={asset.src} className="w-full h-full object-cover" />}
                             {asset.type === 'audio' && <div className="w-full h-full flex items-center justify-center"><Music size={20} /></div>}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAsset(asset.id);
+                              }}
+                              className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-black/80 transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -121,7 +141,19 @@ export default function MobileLanding({ onStart }: { onStart: () => void }) {
       </div>
 
       <button 
-        onClick={onStart}
+        onClick={async () => {
+          try {
+            if (document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen().catch(() => {});
+            }
+            if (screen.orientation && (screen.orientation as any).lock) {
+              await (screen.orientation as any).lock('landscape').catch(() => {});
+            }
+          } catch (e) {
+            // Silently ignore sandbox errors
+          }
+          onStart();
+        }}
         disabled={assets.length === 0}
         className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-auto"
       >
