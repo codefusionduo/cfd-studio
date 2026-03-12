@@ -41,7 +41,9 @@ export default function Timeline() {
     setSelectedItem,
     updateTrackItem,
     removeTrackItem,
-    splitTrackItem
+    splitTrackItem,
+    previewZoom,
+    setPreviewZoom
   } = useEditorStore();
 
   const { undo, redo } = useEditorStore.temporal.getState();
@@ -484,19 +486,29 @@ export default function Timeline() {
   return (
     <div className="h-full bg-[#1e1e1e] border-t border-white/10 flex flex-col select-none">
       {/* Toolbar */}
-      <div className="h-12 border-b border-white/10 flex items-center justify-between px-4 bg-[#252525]">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 hover:bg-white/10 rounded-full text-white">
+      <div className="h-12 border-b border-white/10 flex items-center justify-between px-2 md:px-4 bg-[#252525] overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
+          <button onClick={() => {
+            if (!isPlaying) {
+              const stopTime = contentDuration > 0 ? contentDuration : duration;
+              if (useEditorStore.getState().currentTime >= stopTime) {
+                setCurrentTime(0);
+              }
+            }
+            setIsPlaying(!isPlaying);
+          }} className="p-2 hover:bg-white/10 rounded-full text-white flex-shrink-0">
             {isPlaying ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
           </button>
-          <TimeDisplay />
+          <div className="flex-shrink-0">
+            <TimeDisplay />
+          </div>
           
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2 flex-shrink-0" />
 
           <button 
             onClick={() => undo()}
             disabled={pastStates.length === 0}
-            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Undo"
           >
             <Undo2 size={18} />
@@ -504,18 +516,18 @@ export default function Timeline() {
           <button 
             onClick={() => redo()}
             disabled={futureStates.length === 0}
-            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Redo"
           >
             <Redo2 size={18} />
           </button>
 
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2 flex-shrink-0" />
 
           <button 
             onClick={handleSplit}
             disabled={!selectedItemId} 
-            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Split (Cut)"
           >
             <Scissors size={18} />
@@ -523,18 +535,18 @@ export default function Timeline() {
           <button 
             onClick={handleDelete}
             disabled={!selectedItemId} 
-            className="p-2 hover:bg-red-500/20 text-red-400 rounded-full disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-red-500/20 text-red-400 rounded-full disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Delete"
           >
             <Trash2 size={18} />
           </button>
 
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2 flex-shrink-0" />
 
           <button 
             onClick={handleLayerUp}
             disabled={!selectedItemId} 
-            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Move Layer Up"
           >
             <ArrowUp size={18} />
@@ -542,13 +554,13 @@ export default function Timeline() {
           <button 
             onClick={handleLayerDown}
             disabled={!selectedItemId} 
-            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors flex-shrink-0"
             title="Move Layer Down"
           >
             <ArrowDown size={18} />
           </button>
 
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2 flex-shrink-0" />
 
           <button 
             onClick={() => {
@@ -562,50 +574,49 @@ export default function Timeline() {
               }
             }}
             disabled={!selectedItemId} 
-            className="px-3 py-1 text-xs font-medium bg-white/10 hover:bg-white/20 rounded-full text-white disabled:opacity-30 disabled:hover:bg-white/10 transition-colors"
+            className="px-3 py-1 text-xs font-medium bg-white/10 hover:bg-white/20 rounded-full text-white disabled:opacity-30 disabled:hover:bg-white/10 transition-colors flex-shrink-0 whitespace-nowrap"
             title="Apply Default Transitions (0.5s Fade)"
           >
             Add Transition
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0 ml-4">
           <button 
-            onClick={() => {
-              if (contentDuration > 0 && timelineRef.current) {
-                // Calculate zoom needed to fit content in timeline width (with a small margin)
-                const availableWidth = timelineRef.current.clientWidth - 40; // 40px margin
-                const newZoom = Math.max(5, Math.min(100, availableWidth / contentDuration));
-                setZoom(newZoom);
-              }
-            }}
-            className="px-2 py-1 mr-2 text-[10px] font-medium uppercase tracking-wider bg-white/5 hover:bg-white/10 rounded text-white/70 transition-colors"
-            title="Fit to Screen"
+            onClick={() => setPreviewZoom('fit')}
+            className="px-2 py-1 mr-1 md:mr-2 text-[10px] font-medium uppercase tracking-wider bg-white/5 hover:bg-white/10 rounded text-white/70 transition-colors flex-shrink-0"
+            title="Fit Preview to Screen"
           >
             Fit
           </button>
           <button 
-            onClick={() => setZoom(Math.max(5, zoom - 5))} 
-            className="p-1.5 hover:bg-white/10 rounded text-white/70 transition-colors"
-            title="Zoom Out"
+            onClick={() => {
+              const currentZoom = previewZoom === 'fit' ? 1 : previewZoom;
+              setPreviewZoom(Math.max(0.1, currentZoom - 0.1));
+            }} 
+            className="p-1.5 hover:bg-white/10 rounded text-white/70 transition-colors flex-shrink-0"
+            title="Zoom Out Preview"
           >
             <ZoomOut size={16} />
           </button>
           
-          <div className="flex items-center gap-2 group">
+          <div className="flex items-center gap-2 group flex-shrink-0">
             <input
               type="range"
-              min="5"
-              max="100"
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="w-24 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
+              min="10"
+              max="300"
+              value={previewZoom === 'fit' ? 100 : previewZoom * 100}
+              onChange={(e) => setPreviewZoom(Number(e.target.value) / 100)}
+              className="w-16 md:w-24 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
             />
           </div>
 
           <button 
-            onClick={() => setZoom(Math.min(100, zoom + 5))} 
-            className="p-1.5 hover:bg-white/10 rounded text-white/70 transition-colors"
-            title="Zoom In"
+            onClick={() => {
+              const currentZoom = previewZoom === 'fit' ? 1 : previewZoom;
+              setPreviewZoom(Math.min(3, currentZoom + 0.1));
+            }} 
+            className="p-1.5 hover:bg-white/10 rounded text-white/70 transition-colors flex-shrink-0"
+            title="Zoom In Preview"
           >
             <ZoomIn size={16} />
           </button>
@@ -659,7 +670,7 @@ export default function Timeline() {
           )}
 
           {/* Tracks */}
-          <div className="p-4 space-y-2 pt-10">
+          <div className="pt-10">
             {sortedTracks.map((item) => {
               const rowIndex = getRowIndex(item.layer || 0);
               return (

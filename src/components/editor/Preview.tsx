@@ -705,13 +705,14 @@ export default function Preview() {
     selectedItemId, 
     setSelectedItem, 
     updateTrackItem,
-    canvasSize 
+    canvasSize,
+    previewZoom,
+    setPreviewZoom
   } = useEditorStore();
 
   const containerRef = useRef(null);
   const [scale, setScale] = useState(1);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState<'fit' | number>('fit');
 
   const toggleFullScreen = () => {
     if (!containerRef.current) return;
@@ -826,20 +827,6 @@ export default function Preview() {
       {/* Time Display Overlay & Full Screen Toggle */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <PreviewTimeDisplay />
-        
-        <select 
-          value={previewZoom}
-          onChange={(e) => setPreviewZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))}
-          className="bg-black/50 text-white text-xs px-2 py-1 rounded border border-white/10 outline-none focus:border-cyan-500"
-        >
-          <option value="fit">Fit</option>
-          <option value={0.25}>25%</option>
-          <option value={0.5}>50%</option>
-          <option value={0.75}>75%</option>
-          <option value={1}>100%</option>
-          <option value={1.5}>150%</option>
-          <option value={2}>200%</option>
-        </select>
 
         <button 
           onClick={toggleFullScreen}

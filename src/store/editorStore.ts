@@ -17,6 +17,8 @@ interface EditorStore extends EditorState {
   setSelectedItem: (id: string | null) => void;
   setCanvasSize: (size: { width: number; height: number }) => void;
   setZoom: (zoom: number) => void;
+  previewZoom: number | 'fit';
+  setPreviewZoom: (zoom: number | 'fit') => void;
   clearAll: () => void;
 }
 
@@ -32,6 +34,7 @@ export const useEditorStore = create<EditorStore>()(
         selectedItemId: null,
         canvasSize: { width: 1080, height: 1920 }, // Default 9:16 (TikTok/Reels style)
         zoom: 10, // Pixels per second
+        previewZoom: 'fit',
 
         addAsset: (asset) => set((state) => ({ assets: [...state.assets, asset] })),
         
@@ -102,6 +105,7 @@ export const useEditorStore = create<EditorStore>()(
         setSelectedItem: (id) => set({ selectedItemId: id }),
         setCanvasSize: (size) => set({ canvasSize: size }),
         setZoom: (zoom) => set({ zoom }),
+        setPreviewZoom: (previewZoom) => set({ previewZoom }),
         clearAll: () => set({ assets: [], tracks: [], selectedItemId: null, currentTime: 0 }),
       }),
       {

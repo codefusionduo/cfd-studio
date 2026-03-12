@@ -3,7 +3,7 @@ import AssetLibrary from './AssetLibrary';
 import Preview from './Preview';
 import Timeline from './Timeline';
 import PropertiesPanel from './PropertiesPanel';
-import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus } from 'lucide-react';
+import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus, X } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
 import MobileLanding from '../MobileLanding';
@@ -78,7 +78,13 @@ export default function EditorLayout() {
   const [showSplash, setShowSplash] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [timelineHeight, setTimelineHeight] = useState(288); // Default 72 * 4 = 288px
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, message: string, onConfirm: () => void } | null>(null);
+  const [timelineHeight, setTimelineHeight] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerHeight < 500 ? 140 : 288;
+    }
+    return 288;
+  });
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -113,7 +119,7 @@ export default function EditorLayout() {
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const delta = startY - moveEvent.clientY;
-      const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight - 200));
+      const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight - 100));
       setTimelineHeight(newHeight);
     };
 
@@ -194,6 +200,16 @@ export default function EditorLayout() {
       }
       if (e.code === 'Space') {
         e.preventDefault();
+        if (!isPlaying) {
+          const state = useEditorStore.getState();
+          const contentDuration = state.tracks.length > 0 
+            ? Math.max(...state.tracks.map(t => t.start + t.duration)) 
+            : state.duration;
+          const stopTime = contentDuration > 0 ? contentDuration : state.duration;
+          if (state.currentTime >= stopTime) {
+            setCurrentTime(0);
+          }
+        }
         setIsPlaying(!isPlaying);
       }
     };
@@ -261,26 +277,34 @@ export default function EditorLayout() {
       setCurrentTime(0);
       
       // Automatically clear the project after successful export
-      if (window.confirm('Video exported successfully! Would you like to clear the project and start a new one?')) {
-        useEditorStore.getState().clearAll();
-        setHasStarted(false);
-      }
+      setConfirmModal({
+        isOpen: true,
+        message: 'Video exported successfully! Would you like to clear the project and start a new one?',
+        onConfirm: () => {
+          useEditorStore.getState().clearAll();
+          setHasStarted(false);
+          setConfirmModal(null);
+        }
+      });
     };
 
     mediaRecorder.start();
     setIsPlaying(true);
 
     // Stop recording when we reach the end
-    // We need to check this periodically or use a timeout
-    // Since we can't easily hook into the store's internal loop from here without effects,
-    // we'll use a simple timeout for the duration of the video.
-    // Note: This assumes real-time playback. If rendering lags, this might cut off.
-    // A better way is to listen to store changes, but for MVP this is okay.
-    
-    setTimeout(() => {
-      mediaRecorder.stop();
-      setIsPlaying(false);
-    }, duration * 1000 + 500); // Add buffer
+    // Use setInterval to check the store's currentTime instead of a fixed timeout
+    const checkInterval = setInterval(() => {
+      const state = useEditorStore.getState();
+      const contentDuration = state.tracks.length > 0 
+        ? Math.max(...state.tracks.map(t => t.start + t.duration)) 
+        : state.duration;
+        
+      if (state.currentTime >= contentDuration) {
+        clearInterval(checkInterval);
+        mediaRecorder.stop();
+        state.setIsPlaying(false);
+      }
+    }, 100);
   };
 
   const addTextLayer = () => {
@@ -443,10 +467,15 @@ export default function EditorLayout() {
         <div className="flex items-center gap-2 sm:gap-3">
           <button 
             onClick={() => {
-              if (window.confirm('Are you sure you want to start a new project? This will delete all current assets and edits.')) {
-                clearAll();
-                setHasStarted(false);
-              }
+              setConfirmModal({
+                isOpen: true,
+                message: 'Are you sure you want to start a new project? This will delete all current assets and edits.',
+                onConfirm: () => {
+                  clearAll();
+                  setHasStarted(false);
+                  setConfirmModal(null);
+                }
+              });
             }}
             className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
@@ -498,7 +527,7 @@ export default function EditorLayout() {
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {!isMobile && <AssetLibrary />}
         
         <div className="flex-1 flex flex-col min-w-0">
@@ -506,10 +535,30 @@ export default function EditorLayout() {
           
           {/* Resizer */}
           <div 
-            className="h-1 bg-white/10 hover:bg-cyan-500 cursor-row-resize transition-colors z-50 relative"
+            className="h-2 bg-white/5 hover:bg-cyan-500 cursor-row-resize transition-colors z-50 relative flex items-center justify-center"
             onMouseDown={handleResizerMouseDown}
+            onTouchStart={(e) => {
+              const touch = e.touches[0];
+              const startY = touch.clientY;
+              const startHeight = timelineHeight;
+              
+              const handleTouchMove = (moveEvent: TouchEvent) => {
+                const delta = startY - moveEvent.touches[0].clientY;
+                const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight - 100));
+                setTimelineHeight(newHeight);
+              };
+              
+              const handleTouchEnd = () => {
+                window.removeEventListener('touchmove', handleTouchMove);
+                window.removeEventListener('touchend', handleTouchEnd);
+              };
+              
+              window.addEventListener('touchmove', handleTouchMove);
+              window.addEventListener('touchend', handleTouchEnd);
+            }}
           >
-            <div className="absolute inset-x-0 -top-1 -bottom-1" />
+            <div className="w-8 h-1 bg-white/20 rounded-full" />
+            <div className="absolute inset-x-0 -top-2 -bottom-2" />
           </div>
 
           <div style={{ height: timelineHeight }} className="flex-shrink-0">
@@ -520,6 +569,42 @@ export default function EditorLayout() {
         <PropertiesPanel />
       </div>
     </div>
+      {/* Confirm Modal */}
+      <AnimatePresence>
+        {confirmModal !== null && confirmModal.isOpen && (
+          <motion.div
+            key="confirm-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#1e1e1e] border border-white/10 rounded-xl p-6 max-w-sm w-full shadow-2xl"
+            >
+              <h3 className="text-lg font-semibold text-white mb-2">Confirm Action</h3>
+              <p className="text-white/70 mb-6 text-sm">{confirmModal.message}</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmModal.onConfirm}
+                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-black rounded-lg text-sm font-medium transition-colors"
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

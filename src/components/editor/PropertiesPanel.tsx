@@ -112,7 +112,7 @@ export default function PropertiesPanel() {
   );
 
   return (
-    <div className="w-72 bg-[#1e1e1e] border-l border-white/10 flex flex-col">
+    <div className="w-64 md:w-72 bg-[#1e1e1e] border-l border-white/10 flex flex-col flex-shrink-0">
       <div className="p-4 border-b border-white/10 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white">Properties</h2>
         <button 
@@ -253,40 +253,41 @@ export default function PropertiesPanel() {
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs text-white/50">Layer Order</label>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-1 bg-black/20 p-1 rounded border border-white/10">
               <button 
                 onClick={() => handlePropertyChange('layer', (selectedItem.layer || 0) + 1)}
-                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-1.5 hover:bg-white/10 rounded text-white flex items-center justify-center transition-colors"
                 title="Bring Forward"
               >
-                <ChevronUp size={14} /> Forward
+                <ChevronUp size={16} />
               </button>
               <button 
                 onClick={() => handlePropertyChange('layer', Math.max(0, (selectedItem.layer || 0) - 1))}
-                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-1.5 hover:bg-white/10 rounded text-white flex items-center justify-center transition-colors"
                 title="Send Backward"
               >
-                <ChevronDown size={14} /> Backward
+                <ChevronDown size={16} />
               </button>
+              <div className="w-px h-4 bg-white/10 mx-1" />
               <button 
                 onClick={() => {
                   const maxLayer = Math.max(...tracks.map(t => t.layer || 0));
                   handlePropertyChange('layer', maxLayer + 1);
                 }}
-                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-1.5 hover:bg-white/10 rounded text-white flex items-center justify-center transition-colors"
                 title="Bring to Front"
               >
-                <ArrowUp size={14} /> To Front
+                <ArrowUp size={16} />
               </button>
               <button 
                 onClick={() => {
                   const minLayer = Math.min(...tracks.map(t => t.layer || 0));
                   handlePropertyChange('layer', Math.max(0, minLayer - 1));
                 }}
-                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-1.5 hover:bg-white/10 rounded text-white flex items-center justify-center transition-colors"
                 title="Send to Back"
               >
-                <ArrowDown size={14} /> To Back
+                <ArrowDown size={16} />
               </button>
             </div>
           </div>
