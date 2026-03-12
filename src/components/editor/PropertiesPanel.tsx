@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond, Wand2, Loader2 } from 'lucide-react';
+import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond, Wand2, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import AIEditPanel from './AIEditPanel';
 import { removeBackground } from '@imgly/background-removal';
 import { v4 as uuidv4 } from 'uuid';
@@ -250,30 +250,43 @@ export default function PropertiesPanel() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs text-white/50">Layer (Z-Index)</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs text-white/50">Layer Order</label>
             </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => handlePropertyChange('layer', Math.max(0, (selectedItem.layer || 0) - 1))}
-                className="p-1.5 bg-white/5 hover:bg-white/10 rounded transition-colors"
-                title="Move Backward"
-              >
-                <ChevronDown size={14} />
-              </button>
-              <input 
-                type="number" 
-                min="0"
-                value={selectedItem.layer || 0}
-                onChange={(e) => handlePropertyChange('layer', Math.max(0, Number(e.target.value)))}
-                className="flex-1 bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white text-center focus:border-blue-500 outline-none"
-              />
+            <div className="grid grid-cols-2 gap-2">
               <button 
                 onClick={() => handlePropertyChange('layer', (selectedItem.layer || 0) + 1)}
-                className="p-1.5 bg-white/5 hover:bg-white/10 rounded transition-colors"
-                title="Move Forward"
+                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                title="Bring Forward"
               >
-                <ChevronUp size={14} />
+                <ChevronUp size={14} /> Forward
+              </button>
+              <button 
+                onClick={() => handlePropertyChange('layer', Math.max(0, (selectedItem.layer || 0) - 1))}
+                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                title="Send Backward"
+              >
+                <ChevronDown size={14} /> Backward
+              </button>
+              <button 
+                onClick={() => {
+                  const maxLayer = Math.max(...tracks.map(t => t.layer || 0));
+                  handlePropertyChange('layer', maxLayer + 1);
+                }}
+                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                title="Bring to Front"
+              >
+                <ArrowUp size={14} /> To Front
+              </button>
+              <button 
+                onClick={() => {
+                  const minLayer = Math.min(...tracks.map(t => t.layer || 0));
+                  handlePropertyChange('layer', Math.max(0, minLayer - 1));
+                }}
+                className="px-2 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs text-white flex items-center justify-center gap-1.5 transition-colors"
+                title="Send to Back"
+              >
+                <ArrowDown size={14} /> To Back
               </button>
             </div>
           </div>

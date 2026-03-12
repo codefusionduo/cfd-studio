@@ -54,6 +54,9 @@ export default function Timeline() {
   const [dragStartX, setDragStartX] = useState<number>(0);
   const [itemStartX, setItemStartX] = useState<number>(0);
   const [snapLine, setSnapLine] = useState<number | null>(null);
+  const [dragY, setDragY] = useState<number | null>(null);
+  const dragYRef = useRef<number | null>(null);
+  const dragStartYRef = useRef<number>(0);
   
   // Trimming state
   const [trimmingState, setTrimmingState] = useState<{
@@ -82,7 +85,12 @@ export default function Timeline() {
   }, [tracks, assets]);
 
   // Sort tracks by layer descending for display (Top layer at top of list)
-  const sortedTracks = [...tracks].sort((a, b) => b.layer - a.layer);
+  const uniqueLayers = Array.from(new Set(tracks.map(t => t.layer || 0))).sort((a, b) => b - a);
+  const getRowIndex = (layer: number) => uniqueLayers.indexOf(layer || 0);
+  const sortedTracks = [...tracks].sort((a, b) => {
+    if (b.layer !== a.layer) return b.layer - a.layer;
+    return a.start - b.start;
+  });
 
   // Calculate total content duration
   const contentDuration = tracks.length > 0 
@@ -175,6 +183,7 @@ export default function Timeline() {
     e.stopPropagation();
     setDraggingId(id);
     setDragStartX(e.clientX);
+    dragStartYRef.current = e.clientY;
     setItemStartX(start);
     setSelectedItem(id);
   };
@@ -408,10 +417,46 @@ export default function Timeline() {
 
       setSnapLine(activeSnapLine);
       updateTrackItem(draggingId, { start: Math.max(0, newStart) });
+
+      // Vertical dragging
+      const deltaY = e.clientY - dragStartYRef.current;
+      const currentUniqueLayers = Array.from(new Set(tracksRef.current.map(t => t.layer || 0))).sort((a, b) => b - a);
+      const rowIndex = currentUniqueLayers.indexOf(item.layer || 0);
+      const initialTop = 40 + rowIndex * 50;
+      const newDragY = initialTop + deltaY;
+      setDragY(newDragY);
+      dragYRef.current = newDragY;
     };
 
     const handleMouseUp = () => {
+      if (draggingId && dragYRef.current !== null) {
+         const draggedItem = tracksRef.current.find(t => t.id === draggingId);
+         if (draggedItem) {
+           const dropY = dragYRef.current - 40;
+           const targetRowIndex = Math.round(dropY / 50);
+           
+           const currentUniqueLayers = Array.from(new Set(tracksRef.current.map(t => t.layer || 0))).sort((a, b) => b - a);
+           
+           let newLayer;
+           if (currentUniqueLayers.length === 0) {
+             newLayer = 10;
+           } else if (targetRowIndex < 0) {
+             newLayer = (currentUniqueLayers[0] || 0) + 10;
+           } else if (targetRowIndex >= currentUniqueLayers.length) {
+             newLayer = (currentUniqueLayers[currentUniqueLayers.length - 1] || 0) - 10;
+           } else {
+             newLayer = currentUniqueLayers[targetRowIndex];
+           }
+           
+           if (draggedItem.layer !== newLayer) {
+             updateTrackItem(draggingId, { layer: newLayer });
+           }
+         }
+      }
+
       setDraggingId(null);
+      setDragY(null);
+      dragYRef.current = null;
       setTrimmingState(null);
       setFadingState(null);
       setSnapLine(null);
@@ -577,7 +622,7 @@ export default function Timeline() {
           className="relative min-w-full" 
           style={{ 
             width: effectiveDuration * zoom + 100,
-            height: Math.max(300, 60 + tracks.length * 50) 
+            height: Math.max(300, 60 + uniqueLayers.length * 50) 
           }}
           onMouseDown={handleTimelineMouseDown}
         >
@@ -615,9 +660,9 @@ export default function Timeline() {
 
           {/* Tracks */}
           <div className="p-4 space-y-2 pt-10">
-            {/* We group tracks visually, but for now just render items in a flat list with offset y */}
-            {/* In a real app, we'd group by 'layer' or 'trackId' */}
-            {sortedTracks.map((item, index) => (
+            {sortedTracks.map((item) => {
+              const rowIndex = getRowIndex(item.layer || 0);
+              return (
               <div
                 key={item.id}
                 className={clsx(
@@ -629,7 +674,8 @@ export default function Timeline() {
                 style={{
                   left: item.start * zoom,
                   width: item.duration * zoom,
-                  top: 40 + (index * 50) // Simple stacking for now
+                  top: draggingId === item.id && dragY !== null ? dragY : 40 + (rowIndex * 50),
+                  zIndex: draggingId === item.id ? 50 : (selectedItemId === item.id ? 10 : 1)
                 }}
                 onMouseDown={(e) => handleMouseDown(e, item.id, item.start)}
               >
@@ -676,7 +722,8 @@ export default function Timeline() {
                   {item.type === 'video' && <Volume2 size={12} className="opacity-70" />}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
