@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Transformer, Text, Shape } from 'react-konva';
 import { useEditorStore } from '../../store/editorStore';
-import { Maximize, Minimize } from 'lucide-react';
+import { Maximize, Minimize, Play, Pause } from 'lucide-react';
 
 const getInterpolatedValue = (item, property, currentTime, defaultValue) => {
   if (!item.keyframes || !item.keyframes[property] || item.keyframes[property].length === 0) {
@@ -702,6 +702,7 @@ export default function Preview() {
   const { 
     tracks, 
     isPlaying, 
+    setIsPlaying,
     selectedItemId, 
     setSelectedItem, 
     updateTrackItem,
@@ -826,6 +827,25 @@ export default function Preview() {
       
       {/* Time Display Overlay & Full Screen Toggle */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button 
+          onClick={() => {
+            if (!isPlaying) {
+              const state = useEditorStore.getState();
+              const contentDuration = state.tracks.length > 0 
+                ? Math.max(...state.tracks.map(t => t.start + t.duration)) 
+                : state.duration;
+              const stopTime = contentDuration > 0 ? contentDuration : state.duration;
+              if (state.currentTime >= stopTime) {
+                state.setCurrentTime(0);
+              }
+            }
+            setIsPlaying(!isPlaying);
+          }}
+          className="p-1.5 bg-black/50 rounded text-white hover:bg-white/20 transition-colors"
+          title={isPlaying ? "Pause" : "Play"}
+        >
+          {isPlaying ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
+        </button>
         <PreviewTimeDisplay />
 
         <button 
