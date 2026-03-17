@@ -87,8 +87,44 @@ export default function EditorLayout() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const previewRef = useRef<any>(null);
 
+  // Load saved state on initialization
   useEffect(() => {
+    const savedState = localStorage.getItem('editor-auto-save');
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        useEditorStore.getState().loadState(parsed);
+        if (parsed.tracks && parsed.tracks.length > 0) {
+          setHasStarted(true);
+        }
+      } catch (e) {
+        console.error('Failed to load auto-save', e);
+      }
+    }
+  }, []);
+
+  // Auto-save logic
+  useEffect(() => {
+    const saveState = () => {
+      const state = useEditorStore.getState();
+      const stateToSave = {
+        assets: state.assets,
+        tracks: state.tracks,
+        canvasSize: state.canvasSize,
+        duration: state.duration,
+      };
+      localStorage.setItem('editor-auto-save', JSON.stringify(stateToSave));
+      setIsSaving(false);
+    };
+
+    // Save every 60 seconds
+    const interval = setInterval(() => {
+      setIsSaving(true);
+      saveState();
+    }, 60000);
+
     const unsubscribe = useEditorStore.subscribe((state, prevState) => {
       // Check if any persisted state changed
       if (
@@ -102,11 +138,13 @@ export default function EditorLayout() {
           clearTimeout(saveTimeoutRef.current);
         }
         saveTimeoutRef.current = setTimeout(() => {
-          setIsSaving(false);
-        }, 1000);
+          saveState();
+        }, 1000); // Save after significant changes (debounced)
       }
     });
+
     return () => {
+      clearInterval(interval);
       unsubscribe();
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
@@ -220,8 +258,10 @@ export default function EditorLayout() {
   const handleExport = async () => {
     if (isExporting) return;
     
-    const canvas = document.querySelector('canvas');
+    const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement;
     if (!canvas) return;
+
+    const audioStream = previewRef.current?.getAudioStream();
 
     setIsExporting(true);
     setIsPlaying(false);
@@ -248,8 +288,18 @@ export default function EditorLayout() {
       }
     }
 
-    const stream = canvas.captureStream(30); // 30 FPS
-    const mediaRecorder = new MediaRecorder(stream, {
+    const canvasStream = canvas.captureStream(30); // 30 FPS
+    const tracks = [...canvasStream.getVideoTracks()];
+    
+    if (audioStream) {
+      const audioTracks = audioStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        tracks.push(audioTracks[0]);
+      }
+    }
+
+    const combinedStream = new MediaStream(tracks);
+    const mediaRecorder = new MediaRecorder(combinedStream, {
       mimeType: selectedMimeType
     });
 
@@ -324,12 +374,6 @@ export default function EditorLayout() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleAIEditClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -447,14 +491,6 @@ export default function EditorLayout() {
             <Scissors size={18} className="text-white" />
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden sm:block">cfd studio</h1>
-          
-          <button 
-            onClick={handleAIEditClick}
-            className="ml-2 sm:ml-4 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg flex items-center gap-2 transition-colors border border-purple-500/30"
-          >
-            <Sparkles size={16} />
-            <span className="text-sm font-medium hidden sm:block">AI Edit</span>
-          </button>
           <input
             type="file"
             ref={fileInputRef}
@@ -521,7 +557,7 @@ export default function EditorLayout() {
             className="px-4 py-1.5 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-black font-semibold rounded-full flex items-center gap-2 transition-colors"
           >
             {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {isExporting ? 'Exporting...' : 'Export'}
+            {isExporting ? 'Exporting...' : 'Export 1080p'}
           </button>
         </div>
       </header>
@@ -531,7 +567,7 @@ export default function EditorLayout() {
         {!isMobile && <AssetLibrary />}
         
         <div className="flex-1 flex flex-col min-w-0">
-          <Preview />
+          <Preview ref={previewRef} />
           
           {/* Resizer */}
           <div 

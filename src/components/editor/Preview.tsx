@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { Stage, Layer, Image as KonvaImage, Transformer, Text, Shape } from 'react-konva';
 import { useEditorStore } from '../../store/editorStore';
 import { Maximize, Minimize, Play, Pause } from 'lucide-react';
@@ -35,7 +35,7 @@ const PreviewTimeDisplay = () => {
   );
 };
 
-const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => {
+const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audioContext, audioDestination }) => {
   const currentTime = useEditorStore(state => state.currentTime);
   const canvasSize = useEditorStore(state => state.canvasSize);
   const imageRef = useRef(null);
@@ -43,9 +43,34 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
   const videoElementRef = useRef(document.createElement('video'));
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [imageBitmap, setImageBitmap] = useState(null);
+  const sourceNodeRef = useRef<any>(null);
   
   // Get asset source
   const asset = useEditorStore(state => state.assets.find(a => a.id === item.assetId));
+
+  // Handle Audio Context Connection
+  useEffect(() => {
+    if (!asset || asset.type !== 'video' || !audioContext || !audioDestination) return;
+    const video = videoElementRef.current;
+    
+    if (!sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current = audioContext.createMediaElementSource(video);
+        sourceNodeRef.current.connect(audioDestination);
+        sourceNodeRef.current.connect(audioContext.destination);
+      } catch (e) {
+        console.warn('Failed to connect video to audio context', e);
+      }
+    }
+
+    return () => {
+      if (sourceNodeRef.current) {
+        try {
+          sourceNodeRef.current.disconnect();
+        } catch (e) {}
+      }
+    };
+  }, [asset, audioContext, audioDestination]);
 
   // Handle Video Loading
   useEffect(() => {
@@ -371,7 +396,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
             const c = item.contrast ?? 100;
             const s = item.saturation ?? 100;
             const effect = item.effect || 'none';
-            const hasFilter = b !== 100 || c !== 100 || s !== 100 || effect !== 'none';
+            const hasFilter = b !== 100 || c !== 100 || s !== 100 || (effect !== 'none' && effect !== 'chroma-key' && effect !== 'pixelate' && effect !== 'noise' && effect !== 'vignette' && effect !== 'edge-detection' && effect !== 'emboss');
             
             if (ctx._context && hasFilter) {
               let filterStr = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
@@ -382,7 +407,106 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange }) => 
               if (effect === 'hue-rotate') filterStr += ' hue-rotate(90deg)';
               ctx._context.filter = filterStr;
             }
-            ctx.drawImage(img, 0, 0, shape.width(), shape.height());
+
+            if (effect === 'chroma-key' || effect === 'pixelate' || effect === 'noise' || effect === 'vignette' || effect === 'edge-detection' || effect === 'emboss') {
+              // Advanced effects that require pixel manipulation or multiple draws
+              const width = shape.width();
+              const height = shape.height();
+              
+              // Create a temporary canvas for pixel manipulation if needed
+              const tempCanvas = document.createElement('canvas');
+              tempCanvas.width = width;
+              tempCanvas.height = height;
+              const tempCtx = tempCanvas.getContext('2d');
+              
+              if (tempCtx) {
+                tempCtx.drawImage(img, 0, 0, width, height);
+                
+                if (effect === 'chroma-key') {
+                  const imageData = tempCtx.getImageData(0, 0, width, height);
+                  const data = imageData.data;
+                  const targetColor = item.chromaKeyColor || '#00ff00';
+                  const r_target = parseInt(targetColor.slice(1, 3), 16);
+                  const g_target = parseInt(targetColor.slice(3, 5), 16);
+                  const b_target = parseInt(targetColor.slice(5, 7), 16);
+                  const similarity = (item.chromaKeySimilarity ?? 0.1) * 255;
+                  const smoothness = (item.chromaKeySmoothness ?? 0.1) * 255;
+
+                  for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    const distance = Math.sqrt(
+                      Math.pow(r - r_target, 2) + 
+                      Math.pow(g - g_target, 2) + 
+                      Math.pow(b - b_target, 2)
+                    );
+
+                    if (distance < similarity) {
+                      data[i + 3] = 0;
+                    } else if (distance < similarity + smoothness) {
+                      data[i + 3] = ((distance - similarity) / smoothness) * 255;
+                    }
+                  }
+                  tempCtx.putImageData(imageData, 0, 0);
+                } else if (effect === 'pixelate') {
+                  const size = 10;
+                  tempCtx.imageSmoothingEnabled = false;
+                  tempCtx.drawImage(tempCanvas, 0, 0, width, height, 0, 0, width / size, height / size);
+                  tempCtx.drawImage(tempCanvas, 0, 0, width / size, height / size, 0, 0, width, height);
+                } else if (effect === 'noise') {
+                  const imageData = tempCtx.getImageData(0, 0, width, height);
+                  const data = imageData.data;
+                  for (let i = 0; i < data.length; i += 4) {
+                    const noise = (Math.random() - 0.5) * 50;
+                    data[i] = Math.min(255, Math.max(0, data[i] + noise));
+                    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+                    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+                  }
+                  tempCtx.putImageData(imageData, 0, 0);
+                } else if (effect === 'vignette') {
+                  const gradient = tempCtx.createRadialGradient(
+                    width / 2, height / 2, 0,
+                    width / 2, height / 2, Math.sqrt(Math.pow(width / 2, 2) + Math.pow(height / 2, 2))
+                  );
+                  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+                  gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+                  tempCtx.fillStyle = gradient;
+                  tempCtx.fillRect(0, 0, width, height);
+                } else if (effect === 'edge-detection' || effect === 'emboss') {
+                  const imageData = tempCtx.getImageData(0, 0, width, height);
+                  const data = imageData.data;
+                  const output = tempCtx.createImageData(width, height);
+                  const outData = output.data;
+                  
+                  const kernel = effect === 'edge-detection' ? 
+                    [-1, -1, -1, -1, 8, -1, -1, -1, -1] : 
+                    [-2, -1, 0, -1, 1, 1, 0, 1, 2];
+
+                  for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                      for (let c = 0; c < 3; c++) {
+                        let val = 0;
+                        for (let ky = -1; ky <= 1; ky++) {
+                          for (let kx = -1; kx <= 1; kx++) {
+                            val += data[((y + ky) * width + (x + kx)) * 4 + c] * kernel[(ky + 1) * 3 + (kx + 1)];
+                          }
+                        }
+                        outData[(y * width + x) * 4 + c] = effect === 'emboss' ? val + 128 : val;
+                      }
+                      outData[(y * width + x) * 4 + 3] = 255;
+                    }
+                  }
+                  tempCtx.putImageData(output, 0, 0);
+                }
+                
+                ctx.drawImage(tempCanvas, 0, 0, width, height);
+              }
+            } else {
+              ctx.drawImage(img, 0, 0, shape.width(), shape.height());
+            }
+
             if (ctx._context && hasFilter) {
               ctx._context.filter = 'none';
             }
@@ -621,11 +745,36 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
   );
 };
 
-const AudioComponent = ({ item, isPlaying }) => {
+const AudioComponent = ({ item, isPlaying, audioContext, audioDestination }) => {
   const currentTime = useEditorStore(state => state.currentTime);
   const audioRef = useRef(document.createElement('audio'));
   const [loaded, setLoaded] = useState(false);
   const asset = useEditorStore(state => state.assets.find(a => a.id === item.assetId));
+  const sourceNodeRef = useRef<any>(null);
+
+  // Handle Audio Context Connection
+  useEffect(() => {
+    if (!asset || asset.type !== 'audio' || !audioContext || !audioDestination) return;
+    const audio = audioRef.current;
+    
+    if (!sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current = audioContext.createMediaElementSource(audio);
+        sourceNodeRef.current.connect(audioDestination);
+        sourceNodeRef.current.connect(audioContext.destination);
+      } catch (e) {
+        console.warn('Failed to connect audio to audio context', e);
+      }
+    }
+
+    return () => {
+      if (sourceNodeRef.current) {
+        try {
+          sourceNodeRef.current.disconnect();
+        } catch (e) {}
+      }
+    };
+  }, [asset, audioContext, audioDestination]);
 
   useEffect(() => {
     if (!asset || asset.type !== 'audio') return;
@@ -698,7 +847,7 @@ const AudioComponent = ({ item, isPlaying }) => {
   return null;
 };
 
-export default function Preview() {
+const Preview = forwardRef((props, ref) => {
   const { 
     tracks, 
     isPlaying, 
@@ -710,6 +859,36 @@ export default function Preview() {
     previewZoom,
     setPreviewZoom
   } = useEditorStore();
+
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioDestinationRef = useRef<any>(null);
+
+  useEffect(() => {
+    const initAudio = () => {
+      if (!audioContextRef.current) {
+        const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+        audioContextRef.current = new AudioContextClass();
+        audioDestinationRef.current = audioContextRef.current.createMediaStreamDestination();
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+    };
+
+    window.addEventListener('click', initAudio, { once: true });
+    window.addEventListener('keydown', initAudio, { once: true });
+    
+    return () => {
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('keydown', initAudio);
+    };
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    getAudioStream: () => {
+      return audioDestinationRef.current?.stream || null;
+    }
+  }));
 
   const containerRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -775,6 +954,8 @@ export default function Preview() {
           key={item.id} 
           item={item} 
           isPlaying={isPlaying} 
+          audioContext={audioContextRef.current}
+          audioDestination={audioDestinationRef.current}
         />
       ))}
 
@@ -787,6 +968,7 @@ export default function Preview() {
           height={canvasSize.height * scale}
           scaleX={scale}
           scaleY={scale}
+          pixelRatio={1 / scale}
           onMouseDown={handleStageClick}
           onTouchStart={handleStageClick}
           className="bg-gray-900 shadow-2xl"
@@ -805,6 +987,8 @@ export default function Preview() {
                       isSelected={selectedItemId === item.id}
                       onSelect={() => setSelectedItem(item.id)}
                       onChange={(newAttrs) => updateTrackItem(item.id, newAttrs)}
+                      audioContext={audioContextRef.current}
+                      audioDestination={audioDestinationRef.current}
                     />
                   );
                 }
@@ -858,4 +1042,6 @@ export default function Preview() {
       </div>
     </div>
   );
-}
+});
+
+export default Preview;

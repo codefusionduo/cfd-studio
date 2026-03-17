@@ -20,6 +20,7 @@ interface EditorStore extends EditorState {
   previewZoom: number | 'fit';
   setPreviewZoom: (zoom: number | 'fit') => void;
   clearAll: () => void;
+  loadState: (state: Partial<EditorState>) => void;
 }
 
 export const useEditorStore = create<EditorStore>()(
@@ -106,7 +107,11 @@ export const useEditorStore = create<EditorStore>()(
         setCanvasSize: (size) => set({ canvasSize: size }),
         setZoom: (zoom) => set({ zoom }),
         setPreviewZoom: (previewZoom) => set({ previewZoom }),
-        clearAll: () => set({ assets: [], tracks: [], selectedItemId: null, currentTime: 0 }),
+        clearAll: () => {
+          localStorage.removeItem('editor-auto-save');
+          set({ assets: [], tracks: [], selectedItemId: null, currentTime: 0 });
+        },
+        loadState: (state) => set((currentState) => ({ ...currentState, ...state })),
       }),
       {
         name: 'editor-storage',

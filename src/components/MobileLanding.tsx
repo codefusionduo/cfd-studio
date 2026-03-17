@@ -141,17 +141,7 @@ export default function MobileLanding({ onStart }: { onStart: () => void }) {
       </div>
 
       <button 
-        onClick={async () => {
-          try {
-            if (document.documentElement.requestFullscreen) {
-              await document.documentElement.requestFullscreen().catch(() => {});
-            }
-            if (screen.orientation && (screen.orientation as any).lock) {
-              await (screen.orientation as any).lock('landscape').catch(() => {});
-            }
-          } catch (e) {
-            // Silently ignore sandbox errors
-          }
+        onClick={() => {
           onStart();
         }}
         disabled={assets.length === 0}

@@ -43,7 +43,12 @@ export interface TrackItem {
   brightness?: number; // 0 to 200, default 100
   contrast?: number; // 0 to 200, default 100
   saturation?: number; // 0 to 200, default 100
-  effect?: 'none' | 'grayscale' | 'sepia' | 'blur' | 'invert' | 'hue-rotate';
+  effect?: 'none' | 'grayscale' | 'sepia' | 'blur' | 'invert' | 'hue-rotate' | 'pixelate' | 'noise' | 'vignette' | 'chroma-key' | 'edge-detection' | 'emboss';
+  
+  // Chroma key properties
+  chromaKeyColor?: string;
+  chromaKeySimilarity?: number;
+  chromaKeySmoothness?: number;
 
   // Keyframes
   keyframes?: {

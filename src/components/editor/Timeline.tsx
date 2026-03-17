@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import { useEditorStore } from '../../store/editorStore';
-import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2, Zap } from 'lucide-react';
 import clsx from 'clsx';
 
 const Playhead = ({ zoom }: { zoom: number }) => {
@@ -77,6 +77,8 @@ export default function Timeline() {
     initialFade: number;
     startX: number;
   } | null>(null);
+
+  const [dropTarget, setDropTarget] = useState<{ id: string, side: 'in' | 'out' | 'full' } | null>(null);
 
   const tracksRef = useRef(tracks);
   const assetsRef = useRef(assets);
@@ -182,6 +184,7 @@ export default function Timeline() {
   };
 
   const handleMouseDown = (e: React.MouseEvent, id: string, start: number) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     setDraggingId(id);
     setDragStartX(e.clientX);
@@ -247,6 +250,60 @@ export default function Timeline() {
       startX: e.clientX
     });
     setSelectedItem(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    const dataTransfer = e.dataTransfer.getData('application/json');
+    let parsedData = null;
+    try {
+      parsedData = JSON.parse(dataTransfer);
+    } catch (e) {}
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropX = e.clientX - rect.left;
+    
+    let side: 'in' | 'out' | 'full' = 'full';
+    if (parsedData?.type === 'transition') {
+      side = dropX < rect.width / 2 ? 'in' : 'out';
+    }
+
+    if (dropTarget?.id !== id || dropTarget?.side !== side) {
+      setDropTarget({ id, side });
+    }
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, item: any) => {
+    e.preventDefault();
+    setDropTarget(null);
+    const data = e.dataTransfer.getData('application/json');
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === 'transition') {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const dropX = e.clientX - rect.left;
+          const isLeftHalf = dropX < rect.width / 2;
+          
+          const transitionType = parsed.source === 'library' ? (isLeftHalf ? 'in' : 'out') : parsed.transitionType;
+          
+          if (transitionType === 'in') {
+            updateTrackItem(item.id, { transitionInType: parsed.value, fadeIn: parsed.duration });
+          } else {
+            updateTrackItem(item.id, { transitionOutType: parsed.value, fadeOut: parsed.duration });
+          }
+        } else if (parsed.type === 'effect') {
+          updateTrackItem(item.id, { effect: parsed.value });
+        }
+      } catch (err) {
+        console.error('Failed to parse dropped data', err);
+      }
+    }
   };
 
   useEffect(() => {
@@ -636,6 +693,12 @@ export default function Timeline() {
             height: Math.max(300, 60 + uniqueLayers.length * 50) 
           }}
           onMouseDown={handleTimelineMouseDown}
+          onDragOver={(e) => {
+            // If we are not over an item, clear dropTarget
+            if (e.target === e.currentTarget) {
+              setDropTarget(null);
+            }
+          }}
         >
           {/* Ruler */}
           <div className="h-8 border-b border-white/10 flex items-end sticky top-0 bg-[#1e1e1e] z-10 pointer-events-none">
@@ -679,6 +742,7 @@ export default function Timeline() {
                 className={clsx(
                   "h-12 rounded-md absolute cursor-pointer overflow-hidden border transition-opacity",
                   selectedItemId === item.id ? "border-yellow-400 ring-1 ring-yellow-400 z-10" : "border-transparent opacity-90 hover:opacity-100",
+                  trimmingState?.id === item.id && "ring-2 ring-blue-400 z-50",
                   item.type === 'video' ? "bg-blue-900/50" : 
                   item.type === 'image' ? "bg-purple-900/50" : "bg-green-900/50"
                 )}
@@ -689,7 +753,39 @@ export default function Timeline() {
                   zIndex: draggingId === item.id ? 50 : (selectedItemId === item.id ? 10 : 1)
                 }}
                 onMouseDown={(e) => handleMouseDown(e, item.id, item.start)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, item)}
               >
+                {/* Drop Zone Highlight */}
+                {dropTarget?.id === item.id && (
+                  <div 
+                    className={clsx(
+                      "absolute top-0 bottom-0 z-40 pointer-events-none border-2 border-blue-400 border-dashed",
+                      dropTarget.side === 'in' ? "left-0 w-1/2 bg-blue-500/30" : 
+                      dropTarget.side === 'out' ? "right-0 w-1/2 bg-blue-500/30" : 
+                      "left-0 right-0 w-full bg-blue-500/20"
+                    )}
+                  />
+                )}
+
+                {/* Transition Indicators */}
+                {item.transitionInType && (
+                  <div className="absolute left-4 top-1 z-30 text-[10px] bg-blue-500/80 text-white px-1 rounded flex items-center gap-1 pointer-events-none">
+                    <Zap size={8} /> {item.transitionInType}
+                  </div>
+                )}
+                {item.transitionOutType && (
+                  <div className="absolute right-4 top-1 z-30 text-[10px] bg-blue-500/80 text-white px-1 rounded flex items-center gap-1 pointer-events-none">
+                    {item.transitionOutType} <Zap size={8} />
+                  </div>
+                )}
+                {item.effect && item.effect !== 'none' && (
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-1 z-30 text-[10px] bg-purple-500/80 text-white px-1 rounded flex items-center gap-1 pointer-events-none">
+                    ✨ {item.effect}
+                  </div>
+                )}
+
                 {/* Fade Visuals */}
                 <div 
                     className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-black/50 to-transparent pointer-events-none z-10"
@@ -720,12 +816,22 @@ export default function Timeline() {
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'start')}
                 >
                   <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
+                  {trimmingState?.id === item.id && trimmingState.side === 'start' && (
+                    <div className="absolute -top-8 left-0 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
+                      {item.duration.toFixed(2)}s
+                    </div>
+                  )}
                 </div>
                 <div 
                   className="absolute right-0 top-0 bottom-0 w-4 bg-white/10 hover:bg-white/30 cursor-ew-resize z-20 flex items-center justify-center group/handle transition-colors"
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'end')}
                 >
                   <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
+                  {trimmingState?.id === item.id && trimmingState.side === 'end' && (
+                    <div className="absolute -top-8 right-0 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
+                      {item.duration.toFixed(2)}s
+                    </div>
+                  )}
                 </div>
                 
                 <div className="px-3 py-2 text-xs text-white truncate font-medium select-none flex items-center gap-2">

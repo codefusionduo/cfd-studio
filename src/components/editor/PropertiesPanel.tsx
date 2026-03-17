@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond, Wand2, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
-import AIEditPanel from './AIEditPanel';
+import { Trash2, Copy, Layers, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Move, Diamond, Wand2, Loader2, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import { removeBackground } from '@imgly/background-removal';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -123,8 +122,6 @@ export default function PropertiesPanel() {
           Delete
         </button>
       </div>
-
-      <AIEditPanel />
 
       <div className="p-4 space-y-6 overflow-y-auto custom-scrollbar">
         {/* Transform Section */}
@@ -329,15 +326,15 @@ export default function PropertiesPanel() {
             </div>
 
             <div>
-              <label className="block text-xs text-white/50 mb-1">Animation Preset</label>
+              <label className="block text-xs text-white/50 mb-1">Text Animation</label>
               <select
                 value={selectedItem.textAnimation || 'none'}
                 onChange={(e) => updateTrackItem(selectedItem.id, { textAnimation: e.target.value as any })}
                 className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
               >
                 <option value="none">None</option>
-                <option value="fade">Fade In</option>
-                <option value="slide">Slide In (Up)</option>
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
                 <option value="typewriter">Typewriter</option>
               </select>
             </div>
@@ -373,8 +370,59 @@ export default function PropertiesPanel() {
                 <option value="blur">Blur</option>
                 <option value="invert">Invert</option>
                 <option value="hue-rotate">Hue Rotate</option>
+                <option value="pixelate">Pixelate</option>
+                <option value="noise">Noise</option>
+                <option value="vignette">Vignette</option>
+                <option value="edge-detection">Edge Detection</option>
+                <option value="emboss">Emboss</option>
+                <option value="chroma-key">Chroma Key (Green Screen)</option>
               </select>
             </div>
+
+            {selectedItem.effect === 'chroma-key' && (
+              <div className="space-y-3 p-3 bg-black/20 rounded border border-white/5">
+                <h4 className="text-[10px] font-medium text-white/40 uppercase tracking-wider">Chroma Key Settings</h4>
+                <div>
+                  <label className="block text-xs text-white/50 mb-1">Key Color</label>
+                  <input 
+                    type="color" 
+                    value={selectedItem.chromaKeyColor || '#00ff00'}
+                    onChange={(e) => updateTrackItem(selectedItem.id, { chromaKeyColor: e.target.value })}
+                    className="w-full h-8 bg-black/20 border border-white/10 rounded cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs text-white/50">Similarity</label>
+                    <span className="text-[10px] text-white/30">{Math.round((selectedItem.chromaKeySimilarity ?? 0.1) * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={selectedItem.chromaKeySimilarity ?? 0.1}
+                    onChange={(e) => updateTrackItem(selectedItem.id, { chromaKeySimilarity: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs text-white/50">Smoothness</label>
+                    <span className="text-[10px] text-white/30">{Math.round((selectedItem.chromaKeySmoothness ?? 0.1) * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={selectedItem.chromaKeySmoothness ?? 0.1}
+                    onChange={(e) => updateTrackItem(selectedItem.id, { chromaKeySmoothness: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div>
@@ -523,72 +571,85 @@ export default function PropertiesPanel() {
         )}
 
         {/* Transitions Section */}
-        <div className="space-y-4 pt-4 border-t border-white/10">
-          <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Transitions</h3>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-white/50 mb-1">In Type</label>
-              <select
-                value={selectedItem.transitionInType || 'fade'}
-                onChange={(e) => updateTrackItem(selectedItem.id, { transitionInType: e.target.value as any })}
-                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none mb-2"
-              >
-                <option value="fade">Fade</option>
-                <option value="slide-left">Slide Left</option>
-                <option value="slide-right">Slide Right</option>
-                <option value="slide-up">Slide Up</option>
-                <option value="slide-down">Slide Down</option>
-                <option value="zoom-in">Zoom In</option>
-                <option value="zoom-out">Zoom Out</option>
-                <option value="spin-in">Spin In</option>
-                <option value="flip-x">Flip X</option>
-                <option value="flip-y">Flip Y</option>
-                <option value="none">None</option>
-              </select>
-              <label className="block text-xs text-white/50 mb-1">In Duration (s)</label>
-              <input 
-                type="number" 
-                step="0.1"
-                min="0"
-                max={selectedItem.duration / 2}
-                value={selectedItem.fadeIn || 0}
-                onChange={(e) => updateTrackItem(selectedItem.id, { fadeIn: Number(e.target.value) })}
-                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-white/50 mb-1">Out Type</label>
-              <select
-                value={selectedItem.transitionOutType || 'fade'}
-                onChange={(e) => updateTrackItem(selectedItem.id, { transitionOutType: e.target.value as any })}
-                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none mb-2"
-              >
-                <option value="fade">Fade</option>
-                <option value="slide-left">Slide Left</option>
-                <option value="slide-right">Slide Right</option>
-                <option value="slide-up">Slide Up</option>
-                <option value="slide-down">Slide Down</option>
-                <option value="zoom-in">Zoom In</option>
-                <option value="zoom-out">Zoom Out</option>
-                <option value="spin-out">Spin Out</option>
-                <option value="flip-x">Flip X</option>
-                <option value="flip-y">Flip Y</option>
-                <option value="none">None</option>
-              </select>
-              <label className="block text-xs text-white/50 mb-1">Out Duration (s)</label>
-              <input 
-                type="number" 
-                step="0.1"
-                min="0"
-                max={selectedItem.duration / 2}
-                value={selectedItem.fadeOut || 0}
-                onChange={(e) => updateTrackItem(selectedItem.id, { fadeOut: Number(e.target.value) })}
-                className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
-              />
+        {(selectedItem.type === 'video' || selectedItem.type === 'image' || selectedItem.type === 'text') && (
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Transitions</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs text-white/50">Type</label>
+                  <div 
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify({
+                        type: 'transition',
+                        transitionType: 'in',
+                        value: selectedItem.transitionInType || 'fade',
+                        duration: selectedItem.fadeIn || 0.5
+                      }));
+                    }}
+                    className="cursor-grab active:cursor-grabbing text-white/30 hover:text-white/80"
+                    title="Drag to apply to other clips"
+                  >
+                    <GripVertical size={12} />
+                  </div>
+                </div>
+                <select
+                  value={selectedItem.transitionInType || 'fade'}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { transitionInType: e.target.value as any })}
+                  className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none mb-2"
+                >
+                  <option value="fade">Fade</option>
+                  <option value="slide-left">Slide Left</option>
+                  <option value="slide-right">Slide Right</option>
+                  <option value="slide-up">Slide Up</option>
+                  <option value="slide-down">Slide Down</option>
+                  <option value="zoom-in">Zoom In</option>
+                  <option value="zoom-out">Zoom Out</option>
+                  <option value="spin-in">Spin In</option>
+                  <option value="flip-x">Flip X</option>
+                  <option value="flip-y">Flip Y</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Audio Fades Section */}
+        {selectedItem.type === 'audio' && (
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Audio Fades</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-white/50 mb-1">Fade In (s)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  min="0"
+                  max={selectedItem.duration / 2}
+                  value={selectedItem.fadeIn || 0}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { fadeIn: Number(e.target.value) })}
+                  className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/50 mb-1">Fade Out (s)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  min="0"
+                  max={selectedItem.duration / 2}
+                  value={selectedItem.fadeOut || 0}
+                  onChange={(e) => updateTrackItem(selectedItem.id, { fadeOut: Number(e.target.value) })}
+                  className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
