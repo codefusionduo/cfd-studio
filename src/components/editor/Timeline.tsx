@@ -3,6 +3,7 @@ import { useStore } from 'zustand';
 import { useEditorStore } from '../../store/editorStore';
 import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2, Zap } from 'lucide-react';
 import clsx from 'clsx';
+import WaveformVisualizer from './WaveformVisualizer';
 
 const Playhead = ({ zoom }: { zoom: number }) => {
   const currentTime = useEditorStore(state => state.currentTime);
@@ -757,6 +758,16 @@ export default function Timeline() {
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, item)}
               >
+                {item.type === 'audio' && (
+                  <WaveformVisualizer
+                    assetSrc={assets.find(a => a.id === item.assetId)?.src || ''}
+                    duration={item.duration}
+                    width={item.duration * zoom}
+                    height={48}
+                    offset={item.offset}
+                  />
+                )}
+
                 {/* Drop Zone Highlight */}
                 {dropTarget?.id === item.id && (
                   <div 

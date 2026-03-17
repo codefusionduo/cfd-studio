@@ -3,6 +3,7 @@ import AssetLibrary from './AssetLibrary';
 import Preview from './Preview';
 import Timeline from './Timeline';
 import PropertiesPanel from './PropertiesPanel';
+import ExportModal from './ExportModal';
 import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus, X } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,6 +76,7 @@ export default function EditorLayout() {
   } = useEditorStore();
   
   const [isExporting, setIsExporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -552,7 +554,7 @@ export default function EditorLayout() {
             )}
           </button>
           <button 
-            onClick={handleExport}
+            onClick={() => setShowExportModal(true)}
             disabled={isExporting}
             className="px-4 py-1.5 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-black font-semibold rounded-full flex items-center gap-2 transition-colors"
           >
@@ -561,6 +563,17 @@ export default function EditorLayout() {
           </button>
         </div>
       </header>
+
+      <ExportModal 
+        isOpen={showExportModal} 
+        onClose={() => setShowExportModal(false)}
+        onExport={(options) => {
+          setShowExportModal(false);
+          handleExport();
+        }}
+        duration={useEditorStore.getState().tracks.length > 0 ? Math.max(...useEditorStore.getState().tracks.map(t => t.start + t.duration)) : useEditorStore.getState().duration}
+        sizeEstimate="about 7 MB"
+      />
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden relative">

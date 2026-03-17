@@ -35,7 +35,7 @@ const PreviewTimeDisplay = () => {
   );
 };
 
-const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audioContext, audioDestination }) => {
+const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audioContext, audioDestination, analyser }) => {
   const currentTime = useEditorStore(state => state.currentTime);
   const canvasSize = useEditorStore(state => state.canvasSize);
   const imageRef = useRef(null);
@@ -58,6 +58,9 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
         sourceNodeRef.current = audioContext.createMediaElementSource(video);
         sourceNodeRef.current.connect(audioDestination);
         sourceNodeRef.current.connect(audioContext.destination);
+        if (analyser) {
+          sourceNodeRef.current.connect(analyser);
+        }
       } catch (e) {
         console.warn('Failed to connect video to audio context', e);
       }
@@ -745,7 +748,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
   );
 };
 
-const AudioComponent = ({ item, isPlaying, audioContext, audioDestination }) => {
+const AudioComponent = ({ item, isPlaying, audioContext, audioDestination, analyser }) => {
   const currentTime = useEditorStore(state => state.currentTime);
   const audioRef = useRef(document.createElement('audio'));
   const [loaded, setLoaded] = useState(false);
@@ -762,6 +765,9 @@ const AudioComponent = ({ item, isPlaying, audioContext, audioDestination }) => 
         sourceNodeRef.current = audioContext.createMediaElementSource(audio);
         sourceNodeRef.current.connect(audioDestination);
         sourceNodeRef.current.connect(audioContext.destination);
+        if (analyser) {
+          sourceNodeRef.current.connect(analyser);
+        }
       } catch (e) {
         console.warn('Failed to connect audio to audio context', e);
       }
@@ -847,7 +853,50 @@ const AudioComponent = ({ item, isPlaying, audioContext, audioDestination }) => 
   return null;
 };
 
-const Preview = forwardRef((props, ref) => {
+const RealtimeVisualizer = ({ analyser }: { analyser: AnalyserNode }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      if (!canvasRef.current) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const barWidth = (canvas.width / bufferLength) * 2;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const barHeight = (dataArray[i] / 255) * canvas.height;
+        ctx.fillStyle = `rgba(74, 222, 128, ${0.5 + barHeight / canvas.height})`; // green-400
+        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+        x += barWidth + 1;
+      }
+
+      requestAnimationFrame(draw);
+    };
+
+    const animationId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animationId);
+  }, [analyser]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={120}
+      height={40}
+      className="absolute bottom-4 left-4 bg-black/40 rounded border border-white/10 z-50 pointer-events-none"
+    />
+  );
+};
+
+const Preview = forwardRef((props: { canvasSize?: { width: number, height: number } }, ref) => {
   const { 
     tracks, 
     isPlaying, 
@@ -855,13 +904,16 @@ const Preview = forwardRef((props, ref) => {
     selectedItemId, 
     setSelectedItem, 
     updateTrackItem,
-    canvasSize,
+    canvasSize: storeCanvasSize,
     previewZoom,
     setPreviewZoom
   } = useEditorStore();
 
+  const canvasSize = props.canvasSize || storeCanvasSize;
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<any>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   useEffect(() => {
     const initAudio = () => {
@@ -869,6 +921,10 @@ const Preview = forwardRef((props, ref) => {
         const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
         audioContextRef.current = new AudioContextClass();
         audioDestinationRef.current = audioContextRef.current.createMediaStreamDestination();
+        
+        const analyser = audioContextRef.current.createAnalyser();
+        analyser.fftSize = 128;
+        analyserRef.current = analyser;
       }
       if (audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume();
@@ -956,8 +1012,13 @@ const Preview = forwardRef((props, ref) => {
           isPlaying={isPlaying} 
           audioContext={audioContextRef.current}
           audioDestination={audioDestinationRef.current}
+          analyser={analyserRef.current}
         />
       ))}
+
+      {isPlaying && analyserRef.current && (
+        <RealtimeVisualizer analyser={analyserRef.current} />
+      )}
 
       <div style={{
         width: canvasSize.width * scale,
@@ -989,6 +1050,7 @@ const Preview = forwardRef((props, ref) => {
                       onChange={(newAttrs) => updateTrackItem(item.id, newAttrs)}
                       audioContext={audioContextRef.current}
                       audioDestination={audioDestinationRef.current}
+                      analyser={analyserRef.current}
                     />
                   );
                 }
