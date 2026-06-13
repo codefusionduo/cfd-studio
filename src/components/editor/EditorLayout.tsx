@@ -7,6 +7,7 @@ import ExportModal from './ExportModal';
 import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus, X } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import { motion, AnimatePresence } from 'motion/react';
+import clsx from 'clsx';
 import MobileLanding from '../MobileLanding';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -90,6 +91,45 @@ export default function EditorLayout() {
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previewRef = useRef<any>(null);
+
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const headerInteractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [isPropertiesVisible, setIsPropertiesVisible] = useState(true);
+  const propertiesInteractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetHeaderTimeout = () => {
+    setIsHeaderVisible(true);
+    if (headerInteractionTimeoutRef.current) {
+      clearTimeout(headerInteractionTimeoutRef.current);
+    }
+    headerInteractionTimeoutRef.current = setTimeout(() => {
+      setIsHeaderVisible(false);
+    }, 5000);
+  };
+
+  const resetPropertiesTimeout = () => {
+    setIsPropertiesVisible(true);
+    if (propertiesInteractionTimeoutRef.current) {
+      clearTimeout(propertiesInteractionTimeoutRef.current);
+    }
+    propertiesInteractionTimeoutRef.current = setTimeout(() => {
+      setIsPropertiesVisible(false);
+    }, 5000);
+  };
+
+  useEffect(() => {
+    resetHeaderTimeout();
+    resetPropertiesTimeout();
+    return () => {
+      if (headerInteractionTimeoutRef.current) {
+        clearTimeout(headerInteractionTimeoutRef.current);
+      }
+      if (propertiesInteractionTimeoutRef.current) {
+        clearTimeout(propertiesInteractionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load saved state on initialization
   useEffect(() => {
@@ -485,10 +525,51 @@ export default function EditorLayout() {
         <p className="text-white/60">CFD Studio requires landscape mode for the best editing experience.</p>
       </div>
 
-      <div className="h-screen bg-[#121212] flex flex-col text-white overflow-hidden font-sans">
+      <div 
+        className="h-screen bg-[#121212] flex flex-col text-white overflow-hidden font-sans relative"
+        onMouseMove={(e) => {
+          if (e.clientY < 80) resetHeaderTimeout();
+          if (e.clientX > window.innerWidth - 80) resetPropertiesTimeout();
+        }}
+        onTouchMove={(e) => {
+          if (e.touches[0].clientY < 80) resetHeaderTimeout();
+          if (e.touches[0].clientX > window.innerWidth - 80) resetPropertiesTimeout();
+        }}
+      >
+        {/* Interaction hit area for cursor near top */}
+        <div 
+          className="absolute top-0 left-0 right-0 h-16 z-[60]"
+          style={{ pointerEvents: isHeaderVisible ? 'none' : 'auto' }}
+          onMouseEnter={resetHeaderTimeout}
+          onTouchStart={resetHeaderTimeout}
+        />
+
+        {/* Global pull-down handle (visible when header is hidden) */}
+        {!isHeaderVisible && (
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-pointer group z-[65] opacity-50 hover:opacity-100 transition-opacity"
+               onMouseEnter={resetHeaderTimeout}
+               onTouchStart={resetHeaderTimeout}>
+            <div className="w-8 h-1 bg-white/50 rounded-full" />
+          </div>
+        )}
+
         {/* Header */}
-      <header className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-[#1e1e1e] z-50">
-        <div className="flex items-center gap-2">
+        <header 
+          className={clsx(
+            "border-b border-white/10 flex items-center justify-between px-4 bg-[#1e1e1e] z-50 transition-all duration-500 ease-in-out shrink-0 relative",
+            isHeaderVisible ? "translate-y-0 h-14 opacity-100" : "-translate-y-full h-0 opacity-0 overflow-hidden border-transparent"
+          )}
+          onMouseEnter={resetHeaderTimeout}
+        >
+          {isHeaderVisible && (
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-16 h-3 flex items-center justify-center cursor-pointer group hover:bg-black/20 rounded-b-xl z-[60] bg-[#1e1e1e] border-x border-b border-white/10"
+                 onMouseEnter={resetHeaderTimeout}
+                 onTouchStart={resetHeaderTimeout}>
+              <div className="w-8 h-1 bg-white/20 group-hover:bg-white/50 rounded-full" />
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
             <Scissors size={18} className="text-white" />
           </div>
@@ -615,7 +696,41 @@ export default function EditorLayout() {
           </div>
         </div>
         
-        <PropertiesPanel />
+        <div 
+          className={clsx(
+            "transition-all duration-500 ease-in-out shrink-0 relative flex z-40",
+            isPropertiesVisible ? "w-64 md:w-72" : "w-0"
+          )}
+          onMouseEnter={resetPropertiesTimeout}
+        >
+          {/* Interaction hit area for cursor near right edge */}
+          {!isPropertiesVisible && (
+            <div 
+              className="absolute top-0 bottom-0 -left-6 w-6 z-[60] cursor-pointer"
+              onMouseEnter={resetPropertiesTimeout}
+              onTouchStart={resetPropertiesTimeout}
+            />
+          )}
+
+          <div 
+            className={clsx(
+              "absolute top-0 left-0 h-full flex transition-transform duration-500 ease-in-out",
+              isPropertiesVisible ? "translate-x-0" : "translate-x-full"
+            )}
+          >
+            {isPropertiesVisible && (
+              <div className="absolute top-1/2 -left-3 -translate-y-1/2 w-3 h-16 flex items-center justify-center cursor-pointer group hover:bg-black/20 rounded-l-xl z-[60] bg-[#1e1e1e] border-y border-l border-white/10"
+                   onMouseEnter={resetPropertiesTimeout}
+                   onTouchStart={resetPropertiesTimeout}>
+                <div className="h-8 w-1 bg-white/20 group-hover:bg-white/50 rounded-full transition-colors" />
+              </div>
+            )}
+            
+            <div className="w-64 md:w-72 h-full shadow-2xl">
+              <PropertiesPanel />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
       {/* Confirm Modal */}

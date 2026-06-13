@@ -12,9 +12,12 @@ const TRANSITIONS = [
   { id: 'slide-down', name: 'Slide Down', icon: '⬇️' },
   { id: 'zoom-in', name: 'Zoom In', icon: '🔍' },
   { id: 'zoom-out', name: 'Zoom Out', icon: '🔎' },
-  { id: 'spin-in', name: 'Spin In', icon: '🌀' },
+  { id: 'spin', name: 'Spin', icon: '🌀' },
   { id: 'flip-x', name: 'Flip X', icon: '↔️' },
   { id: 'flip-y', name: 'Flip Y', icon: '↕️' },
+  { id: 'drop', name: 'Drop', icon: '☄️' },
+  { id: 'elastic', name: 'Elastic', icon: '〰️' },
+  { id: 'rotate', name: 'Rotate', icon: '🔄' },
 ];
 
 const EFFECTS = [
@@ -28,6 +31,9 @@ const EFFECTS = [
   { id: 'vignette', name: 'Vignette', icon: '🖼️' },
   { id: 'edge-detection', name: 'Edges', icon: '📐' },
   { id: 'emboss', name: 'Emboss', icon: '🗿' },
+  { id: 'sharpen', name: 'Sharpen', icon: '🔪' },
+  { id: 'posterize', name: 'Posterize', icon: '🎨' },
+  { id: 'solarize', name: 'Solarize', icon: '☀️' },
   { id: 'chroma-key', name: 'Green Screen', icon: '🟩' },
 ];
 
@@ -185,7 +191,14 @@ export default function AssetLibrary() {
               {assets.map(asset => (
                 <div 
                   key={asset.id}
-                  className="group relative flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                      type: 'media',
+                      value: asset
+                    }));
+                  }}
+                  className="group relative flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer cursor-grab active:cursor-grabbing"
                   onClick={() => addToTimeline(asset)}
                 >
                   <div className="w-12 h-12 rounded bg-black/50 overflow-hidden flex-shrink-0">

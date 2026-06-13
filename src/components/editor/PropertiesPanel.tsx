@@ -375,6 +375,9 @@ export default function PropertiesPanel() {
                 <option value="vignette">Vignette</option>
                 <option value="edge-detection">Edge Detection</option>
                 <option value="emboss">Emboss</option>
+                <option value="sharpen">Sharpen</option>
+                <option value="posterize">Posterize</option>
+                <option value="solarize">Solarize</option>
                 <option value="chroma-key">Chroma Key (Green Screen)</option>
               </select>
             </div>
@@ -614,6 +617,40 @@ export default function PropertiesPanel() {
                 </select>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Audio Settings Section */}
+        {(selectedItem.type === 'audio' || selectedItem.type === 'video') && (
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wider">Audio Settings</h3>
+            
+            <div>
+              <label className="block text-xs text-white/50 mb-1">Volume ({selectedItem.volume ?? 100}%)</label>
+              <input 
+                type="range" 
+                min="0" 
+                max="200"
+                step="1"
+                value={selectedItem.volume ?? 100}
+                onChange={(e) => updateTrackItem(selectedItem.id, { volume: Number(e.target.value) })}
+                className="w-full h-1 bg-white/20 rounded-full appearance-none accent-blue-500"
+              />
+            </div>
+
+            {selectedItem.type === 'audio' && (
+              <div>
+                <label className="flex items-center gap-2 text-sm text-white cursor-pointer hover:bg-white/5 p-1 -mx-1 rounded">
+                  <input 
+                    type="checkbox"
+                    checked={selectedItem.autoDuck || false}
+                    onChange={(e) => updateTrackItem(selectedItem.id, { autoDuck: e.target.checked })}
+                    className="rounded border-white/20 bg-black/20 text-blue-500 focus:ring-blue-500"
+                  />
+                  Auto-duck (lower volume during video)
+                </label>
+              </div>
+            )}
           </div>
         )}
 

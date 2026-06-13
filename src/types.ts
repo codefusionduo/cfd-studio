@@ -50,6 +50,10 @@ export interface TrackItem {
   chromaKeySimilarity?: number;
   chromaKeySmoothness?: number;
 
+  // Audio properties
+  volume?: number;
+  autoDuck?: boolean;
+
   // Keyframes
   keyframes?: {
     x?: Keyframe[];

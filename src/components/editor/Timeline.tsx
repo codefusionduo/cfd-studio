@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import { useEditorStore } from '../../store/editorStore';
-import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2, Zap } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut, Scissors, Trash2, Volume2, ArrowUp, ArrowDown, Undo2, Redo2, Zap, GripHorizontal } from 'lucide-react';
 import clsx from 'clsx';
 import WaveformVisualizer from './WaveformVisualizer';
 
@@ -493,19 +493,32 @@ export default function Timeline() {
          const draggedItem = tracksRef.current.find(t => t.id === draggingId);
          if (draggedItem) {
            const dropY = dragYRef.current - 40;
-           const targetRowIndex = Math.round(dropY / 50);
+           const exactRow = dropY / 50;
+           const targetRowIndex = Math.round(exactRow);
            
            const currentUniqueLayers = Array.from(new Set(tracksRef.current.map(t => t.layer || 0))).sort((a, b) => b - a);
            
            let newLayer;
            if (currentUniqueLayers.length === 0) {
              newLayer = 10;
-           } else if (targetRowIndex < 0) {
+           } else if (exactRow < -0.2) {
+             // Drop above first row
              newLayer = (currentUniqueLayers[0] || 0) + 10;
-           } else if (targetRowIndex >= currentUniqueLayers.length) {
+           } else if (exactRow > currentUniqueLayers.length - 0.8) {
+             // Drop below last row
              newLayer = (currentUniqueLayers[currentUniqueLayers.length - 1] || 0) - 10;
            } else {
-             newLayer = currentUniqueLayers[targetRowIndex];
+             const lowerBound = Math.floor(exactRow);
+             const fraction = exactRow - lowerBound;
+             if (fraction < 0.25 && lowerBound > 0) {
+               // Drop between lowerBound-1 and lowerBound
+               newLayer = (currentUniqueLayers[lowerBound] + currentUniqueLayers[lowerBound - 1]) / 2;
+             } else if (fraction > 0.75 && lowerBound < currentUniqueLayers.length - 1) {
+               // Drop between lowerBound and lowerBound+1
+               newLayer = (currentUniqueLayers[lowerBound] + currentUniqueLayers[lowerBound + 1]) / 2;
+             } else {
+               newLayer = currentUniqueLayers[Math.max(0, Math.min(targetRowIndex, currentUniqueLayers.length - 1))];
+             }
            }
            
            if (draggedItem.layer !== newLayer) {
@@ -695,9 +708,69 @@ export default function Timeline() {
           }}
           onMouseDown={handleTimelineMouseDown}
           onDragOver={(e) => {
+            e.preventDefault();
             // If we are not over an item, clear dropTarget
             if (e.target === e.currentTarget) {
               setDropTarget(null);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const data = e.dataTransfer.getData('application/json');
+            if (data) {
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.type === 'media') {
+                  const asset = parsed.value;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const dropX = e.clientX - rect.left;
+                  const dropY = e.clientY - rect.top;
+                  
+                  const start = Math.max(0, dropX / zoom);
+                  const targetRowIndex = Math.max(0, Math.floor((dropY - 40) / 50));
+                  
+                  const currentUniqueLayers = Array.from(new Set(useEditorStore.getState().tracks.map(t => t.layer || 0))).sort((a, b) => b - a);
+                  
+                  let newLayer = 10;
+                  if (currentUniqueLayers.length > 0) {
+                    if (targetRowIndex >= currentUniqueLayers.length) {
+                      newLayer = (currentUniqueLayers[currentUniqueLayers.length - 1] || 0) - 10;
+                    } else {
+                      newLayer = currentUniqueLayers[targetRowIndex];
+                    }
+                  }
+
+                  let width = 500;
+                  let height = 500;
+                  let x = 0;
+                  let y = 0;
+
+                  if (asset.width && asset.height) {
+                    const canvasSize = useEditorStore.getState().canvasSize;
+                    const scale = Math.min(
+                      canvasSize.width / asset.width,
+                      canvasSize.height / asset.height
+                    );
+                    width = asset.width * scale;
+                    height = asset.height * scale;
+                    x = (canvasSize.width - width) / 2;
+                    y = (canvasSize.height - height) / 2;
+                  }
+
+                  useEditorStore.getState().addTrackItem({
+                    assetId: asset.id,
+                    start,
+                    duration: asset.duration || 5,
+                    offset: 0,
+                    layer: newLayer,
+                    type: asset.type,
+                    x,
+                    y,
+                    width,
+                    height,
+                  });
+                }
+              } catch (err) {}
             }
           }}
         >
@@ -796,6 +869,16 @@ export default function Timeline() {
                     ✨ {item.effect}
                   </div>
                 )}
+
+                {/* Content Label */}
+                <div className="absolute inset-x-4 inset-y-0 flex items-center justify-center pointer-events-none z-20 overflow-hidden">
+                   <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/30 rounded backdrop-blur-sm pointer-events-auto cursor-grab active:cursor-grabbing hover:bg-black/50 transition-colors">
+                      <GripHorizontal size={14} className="text-white/70" />
+                      <span className="text-[10px] text-white/90 uppercase tracking-widest font-medium hidden sm:block">
+                        {item.type} {item.duration.toFixed(1)}s
+                      </span>
+                   </div>
+                </div>
 
                 {/* Fade Visuals */}
                 <div 

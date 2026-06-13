@@ -37,6 +37,7 @@ const PreviewTimeDisplay = () => {
 
 const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audioContext, audioDestination, analyser }) => {
   const currentTime = useEditorStore(state => state.currentTime);
+  const tracks = useEditorStore(state => state.tracks);
   const canvasSize = useEditorStore(state => state.canvasSize);
   const imageRef = useRef(null);
   const trRef = useRef(null);
@@ -134,19 +135,37 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
     const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
 
     // Calculate volume based on fade in/out
-    let volume = 1;
+    let volumeMultiplier = 1;
     const clipTime = currentTime - item.start;
     const fadeIn = item.fadeIn || 0;
     const fadeOut = item.fadeOut || 0;
 
     if (fadeIn > 0 && clipTime < fadeIn) {
-      volume = clipTime / fadeIn;
+      volumeMultiplier = clipTime / fadeIn;
     } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
-      volume = (item.duration - clipTime) / fadeOut;
+      volumeMultiplier = (item.duration - clipTime) / fadeOut;
     }
-    volume = Math.max(0, Math.min(1, volume));
-    if (Math.abs(video.volume - volume) > 0.01) {
-      video.volume = volume;
+    
+    let targetVolume = (item.volume ?? 100) / 100 * volumeMultiplier;
+    
+    // Auto-duck logic (videos can theoretically duck too)
+    if (item.autoDuck) {
+      const isPlayingPrimary = tracks.some(t => {
+        if (t.id === item.id) return false;
+        const active = currentTime >= t.start && currentTime <= t.start + t.duration;
+        if (!active) return false;
+        const isVideoWithAudio = t.type === 'video' && (t.volume ?? 100) > 0;
+        const isPrimaryAudio = t.type === 'audio' && !t.autoDuck && (t.volume ?? 100) > 0;
+        return isVideoWithAudio || isPrimaryAudio;
+      });
+      if (isPlayingPrimary) {
+        targetVolume *= 0.15; // Duck to 15%
+      }
+    }
+
+    targetVolume = Math.max(0, Math.min(1, targetVolume));
+    if (Math.abs(video.volume - targetVolume) > 0.01) {
+      video.volume = targetVolume;
     }
 
     if (isPlaying) {
@@ -270,10 +289,23 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
       displayScaleX = 2 - easeOut;
       displayScaleY = 2 - easeOut;
       opacity = progress;
-    } else if (item.transitionInType === 'spin-in') {
+    } else if (item.transitionInType === 'spin-in' || item.transitionInType === 'spin') {
       displayScaleX = easeOut;
       displayScaleY = easeOut;
       displayRotation = currentRotation - 180 * (1 - easeOut);
+      opacity = progress;
+    } else if (item.transitionInType === 'drop') {
+      displayY = currentY - canvasSize.height * (1 - Math.pow(easeOut, 2));
+      displayScaleX = 0.5 + 0.5 * easeOut;
+      displayScaleY = 0.5 + 0.5 * easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'elastic') {
+      const elasticEaseOut = progress === 0 ? 0 : progress === 1 ? 1 : Math.pow(2, -10 * progress) * Math.sin((progress * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
+      displayScaleX = elasticEaseOut;
+      displayScaleY = elasticEaseOut;
+      opacity = progress < 0.2 ? progress / 0.2 : 1;
+    } else if (item.transitionInType === 'rotate') {
+      displayRotation = currentRotation - 90 * (1 - easeOut);
       opacity = progress;
     } else if (item.transitionInType === 'flip-x') {
       displayScaleX = -1 + 2 * easeOut;
@@ -304,10 +336,24 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
       opacity = 1 - progress;
-    } else if (item.transitionOutType === 'spin-out') {
+    } else if (item.transitionOutType === 'spin-out' || item.transitionOutType === 'spin') {
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
       displayRotation = currentRotation + 180 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'drop') {
+      displayY = currentY + canvasSize.height * easeIn;
+      displayScaleX = 1 - 0.5 * Math.pow(easeIn, 2);
+      displayScaleY = 1 - 0.5 * Math.pow(easeIn, 2);
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'elastic') {
+      const pt = 1 - progress;
+      const elasticEaseIn = pt === 0 ? 0 : pt === 1 ? 1 : -(Math.pow(2, 10 * (pt - 1)) * Math.sin(((pt - 1) - 0.075) * ((2 * Math.PI) / 0.3)));
+      displayScaleX = 1 - elasticEaseIn;
+      displayScaleY = 1 - elasticEaseIn;
+      opacity = progress > 0.8 ? (1 - progress) / 0.2 : 1;
+    } else if (item.transitionOutType === 'rotate') {
+      displayRotation = currentRotation + 90 * easeIn;
       opacity = 1 - progress;
     } else if (item.transitionOutType === 'flip-x') {
       displayScaleX = 1 - 2 * easeIn;
@@ -399,7 +445,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
             const c = item.contrast ?? 100;
             const s = item.saturation ?? 100;
             const effect = item.effect || 'none';
-            const hasFilter = b !== 100 || c !== 100 || s !== 100 || (effect !== 'none' && effect !== 'chroma-key' && effect !== 'pixelate' && effect !== 'noise' && effect !== 'vignette' && effect !== 'edge-detection' && effect !== 'emboss');
+            const hasFilter = b !== 100 || c !== 100 || s !== 100 || (effect !== 'none' && effect !== 'chroma-key' && effect !== 'pixelate' && effect !== 'noise' && effect !== 'vignette' && effect !== 'edge-detection' && effect !== 'emboss' && effect !== 'sharpen' && effect !== 'posterize' && effect !== 'solarize');
             
             if (ctx._context && hasFilter) {
               let filterStr = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
@@ -411,7 +457,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
               ctx._context.filter = filterStr;
             }
 
-            if (effect === 'chroma-key' || effect === 'pixelate' || effect === 'noise' || effect === 'vignette' || effect === 'edge-detection' || effect === 'emboss') {
+            if (effect === 'chroma-key' || effect === 'pixelate' || effect === 'noise' || effect === 'vignette' || effect === 'edge-detection' || effect === 'emboss' || effect === 'sharpen' || effect === 'posterize' || effect === 'solarize') {
               // Advanced effects that require pixel manipulation or multiple draws
               const width = shape.width();
               const height = shape.height();
@@ -477,7 +523,7 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
                   gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
                   tempCtx.fillStyle = gradient;
                   tempCtx.fillRect(0, 0, width, height);
-                } else if (effect === 'edge-detection' || effect === 'emboss') {
+                } else if (effect === 'edge-detection' || effect === 'emboss' || effect === 'sharpen') {
                   const imageData = tempCtx.getImageData(0, 0, width, height);
                   const data = imageData.data;
                   const output = tempCtx.createImageData(width, height);
@@ -485,6 +531,8 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
                   
                   const kernel = effect === 'edge-detection' ? 
                     [-1, -1, -1, -1, 8, -1, -1, -1, -1] : 
+                    effect === 'sharpen' ?
+                    [0, -1, 0, -1, 5, -1, 0, -1, 0] :
                     [-2, -1, 0, -1, 1, 1, 0, 1, 2];
 
                   for (let y = 1; y < height - 1; y++) {
@@ -502,6 +550,21 @@ const MediaComponent = ({ item, isPlaying, onSelect, isSelected, onChange, audio
                     }
                   }
                   tempCtx.putImageData(output, 0, 0);
+                } else if (effect === 'posterize' || effect === 'solarize') {
+                  const imageData = tempCtx.getImageData(0, 0, width, height);
+                  const data = imageData.data;
+                  for (let i = 0; i < data.length; i += 4) {
+                    if (effect === 'posterize') {
+                      data[i] = data[i] & 0xE0;
+                      data[i + 1] = data[i + 1] & 0xE0;
+                      data[i + 2] = data[i + 2] & 0xE0;
+                    } else if (effect === 'solarize') {
+                      data[i] = data[i] > 127 ? 255 - data[i] : data[i];
+                      data[i + 1] = data[i + 1] > 127 ? 255 - data[i + 1] : data[i + 1];
+                      data[i + 2] = data[i + 2] > 127 ? 255 - data[i + 2] : data[i + 2];
+                    }
+                  }
+                  tempCtx.putImageData(imageData, 0, 0);
                 }
                 
                 ctx.drawImage(tempCanvas, 0, 0, width, height);
@@ -590,10 +653,23 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
       displayScaleX = 2 - easeOut;
       displayScaleY = 2 - easeOut;
       opacity = progress;
-    } else if (item.transitionInType === 'spin-in') {
+    } else if (item.transitionInType === 'spin-in' || item.transitionInType === 'spin') {
       displayScaleX = easeOut;
       displayScaleY = easeOut;
       displayRotation = currentRotation - 180 * (1 - easeOut);
+      opacity = progress;
+    } else if (item.transitionInType === 'drop') {
+      displayY = currentY - canvasSize.height * (1 - Math.pow(easeOut, 2));
+      displayScaleX = 0.5 + 0.5 * easeOut;
+      displayScaleY = 0.5 + 0.5 * easeOut;
+      opacity = progress;
+    } else if (item.transitionInType === 'elastic') {
+      const elasticEaseOut = progress === 0 ? 0 : progress === 1 ? 1 : Math.pow(2, -10 * progress) * Math.sin((progress * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
+      displayScaleX = elasticEaseOut;
+      displayScaleY = elasticEaseOut;
+      opacity = progress < 0.2 ? progress / 0.2 : 1;
+    } else if (item.transitionInType === 'rotate') {
+      displayRotation = currentRotation - 90 * (1 - easeOut);
       opacity = progress;
     } else if (item.transitionInType === 'flip-x') {
       displayScaleX = -1 + 2 * easeOut;
@@ -624,10 +700,24 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
       opacity = 1 - progress;
-    } else if (item.transitionOutType === 'spin-out') {
+    } else if (item.transitionOutType === 'spin-out' || item.transitionOutType === 'spin') {
       displayScaleX = 1 - easeIn;
       displayScaleY = 1 - easeIn;
       displayRotation = currentRotation + 180 * easeIn;
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'drop') {
+      displayY = currentY + canvasSize.height * easeIn;
+      displayScaleX = 1 - 0.5 * Math.pow(easeIn, 2);
+      displayScaleY = 1 - 0.5 * Math.pow(easeIn, 2);
+      opacity = 1 - progress;
+    } else if (item.transitionOutType === 'elastic') {
+      const pt = 1 - progress;
+      const elasticEaseIn = pt === 0 ? 0 : pt === 1 ? 1 : -(Math.pow(2, 10 * (pt - 1)) * Math.sin(((pt - 1) - 0.075) * ((2 * Math.PI) / 0.3)));
+      displayScaleX = 1 - elasticEaseIn;
+      displayScaleY = 1 - elasticEaseIn;
+      opacity = progress > 0.8 ? (1 - progress) / 0.2 : 1;
+    } else if (item.transitionOutType === 'rotate') {
+      displayRotation = currentRotation + 90 * easeIn;
       opacity = 1 - progress;
     } else if (item.transitionOutType === 'flip-x') {
       displayScaleX = 1 - 2 * easeIn;
@@ -750,6 +840,7 @@ const TextComponent = ({ item, onSelect, isSelected, onChange }) => {
 
 const AudioComponent = ({ item, isPlaying, audioContext, audioDestination, analyser }) => {
   const currentTime = useEditorStore(state => state.currentTime);
+  const tracks = useEditorStore(state => state.tracks);
   const audioRef = useRef(document.createElement('audio'));
   const [loaded, setLoaded] = useState(false);
   const asset = useEditorStore(state => state.assets.find(a => a.id === item.assetId));
@@ -809,19 +900,37 @@ const AudioComponent = ({ item, isPlaying, audioContext, audioDestination, analy
     const isVisible = currentTime >= item.start && currentTime <= item.start + item.duration;
 
     // Calculate volume based on fade in/out
-    let volume = 1;
+    let volumeMultiplier = 1;
     const clipTime = currentTime - item.start;
     const fadeIn = item.fadeIn || 0;
     const fadeOut = item.fadeOut || 0;
 
     if (fadeIn > 0 && clipTime < fadeIn) {
-      volume = clipTime / fadeIn;
+      volumeMultiplier = clipTime / fadeIn;
     } else if (fadeOut > 0 && clipTime > item.duration - fadeOut) {
-      volume = (item.duration - clipTime) / fadeOut;
+      volumeMultiplier = (item.duration - clipTime) / fadeOut;
     }
-    volume = Math.max(0, Math.min(1, volume));
-    if (Math.abs(audio.volume - volume) > 0.01) {
-      audio.volume = volume;
+    
+    let targetVolume = (item.volume ?? 100) / 100 * volumeMultiplier;
+    
+    // Auto-duck logic
+    if (item.autoDuck) {
+      const isPlayingPrimary = tracks.some(t => {
+        if (t.id === item.id) return false;
+        const active = currentTime >= t.start && currentTime <= t.start + t.duration;
+        if (!active) return false;
+        const isVideoWithAudio = t.type === 'video' && (t.volume ?? 100) > 0;
+        const isPrimaryAudio = t.type === 'audio' && !t.autoDuck && (t.volume ?? 100) > 0;
+        return isVideoWithAudio || isPrimaryAudio;
+      });
+      if (isPlayingPrimary) {
+        targetVolume *= 0.15; // Duck to 15%
+      }
+    }
+
+    targetVolume = Math.max(0, Math.min(1, targetVolume));
+    if (Math.abs(audio.volume - targetVolume) > 0.01) {
+      audio.volume = targetVolume;
     }
 
     if (isPlaying) {
