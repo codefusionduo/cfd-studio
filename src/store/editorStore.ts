@@ -19,6 +19,8 @@ interface EditorStore extends EditorState {
   setZoom: (zoom: number) => void;
   previewZoom: number | 'fit';
   setPreviewZoom: (zoom: number | 'fit') => void;
+  setIsLooping: (isLooping: boolean) => void;
+  setPlaybackRateMultiplier: (rate: number) => void;
   clearAll: () => void;
   loadState: (state: Partial<EditorState>) => void;
 }
@@ -36,6 +38,8 @@ export const useEditorStore = create<EditorStore>()(
         canvasSize: { width: 1080, height: 1920 }, // Default 9:16 (TikTok/Reels style)
         zoom: 10, // Pixels per second
         previewZoom: 'fit',
+        isLooping: false,
+        playbackRateMultiplier: 1.0,
 
         addAsset: (asset) => set((state) => ({ assets: [...state.assets, asset] })),
         
@@ -107,6 +111,8 @@ export const useEditorStore = create<EditorStore>()(
         setCanvasSize: (size) => set({ canvasSize: size }),
         setZoom: (zoom) => set({ zoom }),
         setPreviewZoom: (previewZoom) => set({ previewZoom }),
+        setIsLooping: (isLooping) => set({ isLooping }),
+        setPlaybackRateMultiplier: (playbackRateMultiplier) => set({ playbackRateMultiplier }),
         clearAll: () => {
           localStorage.removeItem('editor-auto-save');
           set({ assets: [], tracks: [], selectedItemId: null, currentTime: 0 });

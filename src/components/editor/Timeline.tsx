@@ -119,18 +119,33 @@ export default function Timeline() {
       const stopTime = contentDuration > 0 ? contentDuration : duration;
 
       if (currentStoreTime >= stopTime) {
-        setIsPlaying(false);
-        return;
+        const isLooping = useEditorStore.getState().isLooping;
+        if (isLooping) {
+          setCurrentTime(0);
+          lastTime = time;
+          animationRef.current = requestAnimationFrame(animate);
+          return;
+        } else {
+          setIsPlaying(false);
+          return;
+        }
       }
       
-      const deltaTime = (time - lastTime) / 1000;
+      const rateMultiplier = useEditorStore.getState().playbackRateMultiplier || 1.0;
+      const deltaTime = ((time - lastTime) / 1000) * rateMultiplier;
       lastTime = time;
       
       const newTime = currentStoreTime + deltaTime;
       
       if (newTime >= stopTime) {
-        setCurrentTime(stopTime);
-        setIsPlaying(false);
+        const isLooping = useEditorStore.getState().isLooping;
+        if (isLooping) {
+          setCurrentTime(0);
+          animationRef.current = requestAnimationFrame(animate);
+        } else {
+          setCurrentTime(stopTime);
+          setIsPlaying(false);
+        }
       } else {
         setCurrentTime(newTime);
         animationRef.current = requestAnimationFrame(animate);
@@ -168,6 +183,69 @@ export default function Timeline() {
     const scrollLeft = timelineRef.current.scrollLeft;
     const newTime = (x + scrollLeft) / zoom;
     setCurrentTime(Math.max(0, Math.min(effectiveDuration, newTime)));
+  };
+
+  const handleTimelineTouchStart = (e: React.TouchEvent) => {
+    if (draggingId || trimmingState || fadingState) return;
+    if (!timelineRef.current || e.touches.length === 0) return;
+    
+    const touch = e.touches[0];
+    const rect = timelineRef.current.getBoundingClientRect();
+    const y = touch.clientY - rect.top;
+    
+    if (y <= 36) {
+      setIsDraggingPlayhead(true);
+    }
+    
+    const x = touch.clientX - rect.left;
+    const scrollLeft = timelineRef.current.scrollLeft;
+    const newTime = (x + scrollLeft) / zoom;
+    setCurrentTime(Math.max(0, Math.min(effectiveDuration, newTime)));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent, id: string, start: number) => {
+    if (e.touches.length === 0) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    setDraggingId(id);
+    setDragStartX(touch.clientX);
+    dragStartYRef.current = touch.clientY;
+    setItemStartX(start);
+    setSelectedItem(id);
+  };
+
+  const handleTrimTouchStart = (e: React.TouchEvent, id: string, side: 'start' | 'end') => {
+    if (e.touches.length === 0) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const item = tracks.find(t => t.id === id);
+    if (!item) return;
+
+    setTrimmingState({
+      id,
+      side,
+      initialStart: item.start,
+      initialDuration: item.duration,
+      initialOffset: item.offset,
+      startX: touch.clientX
+    });
+    setSelectedItem(id);
+  };
+
+  const handleFadeTouchStart = (e: React.TouchEvent, id: string, side: 'in' | 'out') => {
+    if (e.touches.length === 0) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const item = tracks.find(t => t.id === id);
+    if (!item) return;
+    
+    setFadingState({
+      id,
+      side,
+      initialFade: side === 'in' ? (item.fadeIn || 0) : (item.fadeOut || 0),
+      startX: touch.clientX
+    });
+    setSelectedItem(id);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -308,11 +386,11 @@ export default function Timeline() {
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (clientX: number, clientY: number) => {
       if (isDraggingPlayhead) {
         if (!timelineRef.current) return;
         const rect = timelineRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
+        const x = clientX - rect.left;
         const scrollLeft = timelineRef.current.scrollLeft;
         const newTime = (x + scrollLeft) / zoom;
         setCurrentTime(Math.max(0, Math.min(effectiveDuration, newTime)));
@@ -320,17 +398,16 @@ export default function Timeline() {
       }
 
       if (fadingState) {
-        const deltaX = e.clientX - fadingState.startX;
+        const deltaX = clientX - fadingState.startX;
         const deltaSeconds = deltaX / zoom;
         const item = tracksRef.current.find(t => t.id === fadingState.id);
         if (!item) return;
 
         if (fadingState.side === 'in') {
           let newFade = fadingState.initialFade + deltaSeconds;
-          newFade = Math.max(0, Math.min(newFade, item.duration / 2)); // Max half duration
+          newFade = Math.max(0, Math.min(newFade, item.duration / 2));
           updateTrackItem(fadingState.id, { fadeIn: newFade });
         } else {
-          // Dragging left increases fade out (delta is negative when moving left)
           let newFade = fadingState.initialFade - deltaSeconds; 
           newFade = Math.max(0, Math.min(newFade, item.duration / 2));
           updateTrackItem(fadingState.id, { fadeOut: newFade });
@@ -339,7 +416,7 @@ export default function Timeline() {
       }
 
       if (trimmingState) {
-        const deltaX = e.clientX - trimmingState.startX;
+        const deltaX = clientX - trimmingState.startX;
         const deltaTime = deltaX / zoom;
         const item = tracksRef.current.find(t => t.id === trimmingState.id);
         const asset = assetsRef.current.find(a => a.id === item?.assetId);
@@ -361,7 +438,6 @@ export default function Timeline() {
         const playbackRate = item.playbackRate || 1;
 
         if (trimmingState.side === 'start') {
-          // Trimming start
           let newStart = trimmingState.initialStart + deltaTime;
           
           snapPoints.forEach(point => {
@@ -376,7 +452,6 @@ export default function Timeline() {
           let newDuration = trimmingState.initialDuration - (newStart - trimmingState.initialStart);
           let newOffset = trimmingState.initialOffset + (newStart - trimmingState.initialStart) * playbackRate;
 
-          // Constraints
           if (newDuration < 0.1) {
             newDuration = 0.1;
             newStart = trimmingState.initialStart + (trimmingState.initialDuration - 0.1);
@@ -398,7 +473,6 @@ export default function Timeline() {
             offset: newOffset
           });
         } else {
-          // Trimming end
           let newEnd = trimmingState.initialStart + trimmingState.initialDuration + deltaTime;
 
           snapPoints.forEach(point => {
@@ -412,13 +486,11 @@ export default function Timeline() {
 
           let newDuration = newEnd - trimmingState.initialStart;
 
-          // Constraints
           if (newDuration < 0.1) {
              newDuration = 0.1;
              activeSnapLine = null;
           }
           
-          // Max duration constraint if asset is video/audio
           if (asset && asset.duration && item.type !== 'image' && item.type !== 'text') {
             const maxDuration = (asset.duration - item.offset) / playbackRate;
             if (newDuration > maxDuration) {
@@ -437,7 +509,7 @@ export default function Timeline() {
 
       if (!draggingId) return;
       
-      const deltaX = e.clientX - dragStartX;
+      const deltaX = clientX - dragStartX;
       const deltaTime = deltaX / zoom;
       let newStart = Math.max(0, itemStartX + deltaTime);
       const item = tracksRef.current.find(t => t.id === draggingId);
@@ -457,7 +529,6 @@ export default function Timeline() {
       let minDiff = snapThreshold;
 
       snapPoints.forEach(point => {
-        // Check start
         const diffStart = Math.abs(newStart - point);
         if (diffStart < minDiff) {
           minDiff = diffStart;
@@ -465,7 +536,6 @@ export default function Timeline() {
           activeSnapLine = point;
         }
         
-        // Check end
         const newEnd = newStart + item.duration;
         const diffEnd = Math.abs(newEnd - point);
         if (diffEnd < minDiff) {
@@ -478,8 +548,7 @@ export default function Timeline() {
       setSnapLine(activeSnapLine);
       updateTrackItem(draggingId, { start: Math.max(0, newStart) });
 
-      // Vertical dragging
-      const deltaY = e.clientY - dragStartYRef.current;
+      const deltaY = clientY - dragStartYRef.current;
       const currentUniqueLayers = Array.from(new Set(tracksRef.current.map(t => t.layer || 0))).sort((a, b) => b - a);
       const rowIndex = currentUniqueLayers.indexOf(item.layer || 0);
       const initialTop = 40 + rowIndex * 50;
@@ -488,7 +557,17 @@ export default function Timeline() {
       dragYRef.current = newDragY;
     };
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      handlePointerMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const handlePointerUp = () => {
       if (draggingId && dragYRef.current !== null) {
          const draggedItem = tracksRef.current.find(t => t.id === draggingId);
          if (draggedItem) {
@@ -502,26 +581,22 @@ export default function Timeline() {
            if (currentUniqueLayers.length === 0) {
              newLayer = 10;
            } else if (exactRow < -0.2) {
-             // Drop above first row
              newLayer = (currentUniqueLayers[0] || 0) + 10;
            } else if (exactRow > currentUniqueLayers.length - 0.8) {
-             // Drop below last row
              newLayer = (currentUniqueLayers[currentUniqueLayers.length - 1] || 0) - 10;
            } else {
              const lowerBound = Math.floor(exactRow);
              const fraction = exactRow - lowerBound;
              if (fraction < 0.25 && lowerBound > 0) {
-               // Drop between lowerBound-1 and lowerBound
                newLayer = (currentUniqueLayers[lowerBound] + currentUniqueLayers[lowerBound - 1]) / 2;
              } else if (fraction > 0.75 && lowerBound < currentUniqueLayers.length - 1) {
-               // Drop between lowerBound and lowerBound+1
                newLayer = (currentUniqueLayers[lowerBound] + currentUniqueLayers[lowerBound + 1]) / 2;
              } else {
                newLayer = currentUniqueLayers[Math.max(0, Math.min(targetRowIndex, currentUniqueLayers.length - 1))];
              }
            }
            
-           if (draggedItem.layer !== newLayer) {
+           if (newLayer !== undefined && draggedItem.layer !== newLayer) {
              updateTrackItem(draggingId, { layer: newLayer });
            }
          }
@@ -538,12 +613,18 @@ export default function Timeline() {
 
     if (draggingId || trimmingState || fadingState || isDraggingPlayhead) {
       window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mouseup', handlePointerUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: true });
+      window.addEventListener('touchend', handlePointerUp);
+      window.addEventListener('touchcancel', handlePointerUp);
     }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handlePointerUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('touchcancel', handlePointerUp);
     };
   }, [draggingId, trimmingState, fadingState, isDraggingPlayhead, dragStartX, itemStartX, zoom, updateTrackItem, setCurrentTime, effectiveDuration]);
 
@@ -707,6 +788,7 @@ export default function Timeline() {
             height: Math.max(300, 60 + uniqueLayers.length * 50) 
           }}
           onMouseDown={handleTimelineMouseDown}
+          onTouchStart={handleTimelineTouchStart}
           onDragOver={(e) => {
             e.preventDefault();
             // If we are not over an item, clear dropTarget
@@ -827,6 +909,7 @@ export default function Timeline() {
                   zIndex: draggingId === item.id ? 50 : (selectedItemId === item.id ? 10 : 1)
                 }}
                 onMouseDown={(e) => handleMouseDown(e, item.id, item.start)}
+                onTouchStart={(e) => handleTouchStart(e, item.id, item.start)}
                 onDragOver={(e) => handleDragOver(e, item.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, item)}
@@ -895,12 +978,14 @@ export default function Timeline() {
                   className="absolute top-0 w-3 h-3 bg-white border border-black rounded-full cursor-ew-resize z-30 hover:scale-125 transition-transform shadow-sm"
                   style={{ left: (item.fadeIn || 0) * zoom, transform: 'translate(-50%, -25%)' }}
                   onMouseDown={(e) => handleFadeMouseDown(e, item.id, 'in')}
+                  onTouchStart={(e) => handleFadeTouchStart(e, item.id, 'in')}
                   title="Fade In Duration"
                 />
                 <div 
                   className="absolute top-0 w-3 h-3 bg-white border border-black rounded-full cursor-ew-resize z-30 hover:scale-125 transition-transform shadow-sm"
                   style={{ right: (item.fadeOut || 0) * zoom, transform: 'translate(50%, -25%)' }}
                   onMouseDown={(e) => handleFadeMouseDown(e, item.id, 'out')}
+                  onTouchStart={(e) => handleFadeTouchStart(e, item.id, 'out')}
                   title="Fade Out Duration"
                 />
 
@@ -908,6 +993,7 @@ export default function Timeline() {
                 <div 
                   className="absolute left-0 top-0 bottom-0 w-4 bg-white/10 hover:bg-white/30 cursor-ew-resize z-20 flex items-center justify-center group/handle transition-colors"
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'start')}
+                  onTouchStart={(e) => handleTrimTouchStart(e, item.id, 'start')}
                 >
                   <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
                   {trimmingState?.id === item.id && trimmingState.side === 'start' && (
@@ -919,6 +1005,7 @@ export default function Timeline() {
                 <div 
                   className="absolute right-0 top-0 bottom-0 w-4 bg-white/10 hover:bg-white/30 cursor-ew-resize z-20 flex items-center justify-center group/handle transition-colors"
                   onMouseDown={(e) => handleTrimMouseDown(e, item.id, 'end')}
+                  onTouchStart={(e) => handleTrimTouchStart(e, item.id, 'end')}
                 >
                   <div className="w-1 h-6 bg-white/50 rounded-full group-hover/handle:bg-white transition-colors shadow-sm" />
                   {trimmingState?.id === item.id && trimmingState.side === 'end' && (
@@ -929,8 +1016,8 @@ export default function Timeline() {
                 </div>
                 
                 <div className="px-3 py-2 text-xs text-white truncate font-medium select-none flex items-center gap-2">
-                  <span>{item.type.toUpperCase()}</span>
-                  {item.type === 'video' && <Volume2 size={12} className="opacity-70" />}
+                  <span className="truncate">{item.name || `${item.type.toUpperCase()} Clip`}</span>
+                  {item.type === 'video' && <Volume2 size={12} className="opacity-70 flex-shrink-0" />}
                 </div>
               </div>
               );

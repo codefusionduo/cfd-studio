@@ -21,6 +21,7 @@ export interface TrackItem {
   offset: number; // start time within the source asset (seconds)
   layer: number; // z-index equivalent
   type: 'video' | 'image' | 'text' | 'audio';
+  name?: string; // Optional custom name for the track item
   // Visual properties
   x?: number;
   y?: number;
@@ -32,7 +33,23 @@ export interface TrackItem {
   text?: string; // For text layers
   fontSize?: number;
   fontFill?: string;
-  textAnimation?: 'none' | 'fade' | 'slide' | 'typewriter';
+  fontFamily?: string;
+  fontWeight?: 'normal' | 'bold' | '300' | '600' | '800' | string;
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  letterSpacing?: number;
+  lineHeight?: number;
+  backgroundColor?: string;
+  backgroundPadding?: number;
+  borderRadius?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  textAnimation?: 'none' | 'fade' | 'slide' | 'typewriter' | 'bounce' | 'pop' | 'zoom';
   fadeIn?: number; // duration in seconds
   fadeOut?: number; // duration in seconds
   transitionInType?: 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out' | 'spin-in' | 'flip-x' | 'flip-y';
@@ -73,4 +90,8 @@ export interface EditorState {
   selectedItemId: string | null;
   canvasSize: { width: number; height: number };
   zoom: number; // Timeline zoom level
+  isLooping?: boolean;
+  playbackRateMultiplier?: number;
 }
+
+

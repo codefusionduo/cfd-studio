@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AssetLibrary from './AssetLibrary';
 import Preview from './Preview';
+import VideoPreview from './VideoPreview';
 import Timeline from './Timeline';
 import PropertiesPanel from './PropertiesPanel';
 import ExportModal from './ExportModal';
-import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus, X } from 'lucide-react';
+import { Download, Settings, Scissors, Loader2, Type, Sparkles, Plus, X, Film, FolderPlus, Sliders } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
+import { exportToMP4 } from '../../utils/exportVideo';
 import { motion, AnimatePresence } from 'motion/react';
 import clsx from 'clsx';
 import MobileLanding from '../MobileLanding';
@@ -46,7 +48,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5 }}
         >
-          cfd studio
+          Timeline X
         </motion.h1>
         
         <motion.div 
@@ -77,10 +79,13 @@ export default function EditorLayout() {
   } = useEditorStore();
   
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'timeline' | 'media' | 'inspector'>('timeline');
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, message: string, onConfirm: () => void } | null>(null);
   const [timelineHeight, setTimelineHeight] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -243,14 +248,10 @@ export default function EditorLayout() {
   }, []);
 
   useEffect(() => {
-    if (isMobile && hasStarted) {
-      try {
-        if (screen.orientation && (screen.orientation as any).lock) {
-          (screen.orientation as any).lock('landscape').catch(() => {});
-        }
-      } catch (e) {}
+    if (selectedItemId && isMobile) {
+      setMobileTab('inspector');
     }
-  }, [isMobile, hasStarted]);
+  }, [selectedItemId, isMobile]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -297,63 +298,27 @@ export default function EditorLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedItemId, isPlaying, removeTrackItem, setIsPlaying]);
 
-  const handleExport = async () => {
+  const handleExport = async (options?: any) => {
     if (isExporting) return;
     
-    const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement;
-    if (!canvas) return;
-
-    const audioStream = previewRef.current?.getAudioStream();
-
     setIsExporting(true);
-    setIsPlaying(false);
-    setCurrentTime(0);
+    setExportProgress(0);
+    setExportStatus('Setting up render queue...');
 
-    // Wait for seek
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const mimeTypes = [
-      'video/mp4',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm'
-    ];
-    let selectedMimeType = 'video/webm';
-    let extension = 'webm';
-    for (const type of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        selectedMimeType = type;
-        if (type.includes('mp4')) {
-          extension = 'mp4';
-        }
-        break;
-      }
-    }
-
-    const canvasStream = canvas.captureStream(30); // 30 FPS
-    const tracks = [...canvasStream.getVideoTracks()];
-    
-    if (audioStream) {
-      const audioTracks = audioStream.getAudioTracks();
-      if (audioTracks.length > 0) {
-        tracks.push(audioTracks[0]);
-      }
-    }
-
-    const combinedStream = new MediaStream(tracks);
-    const mediaRecorder = new MediaRecorder(combinedStream, {
-      mimeType: selectedMimeType
-    });
-
-    const chunks: Blob[] = [];
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
+    const finalOptions = options || {
+      name: 'timeline-x-video',
+      resolution: '1080P',
+      frameRate: '30fps',
     };
 
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: selectedMimeType });
-      const filename = `cfd-studio-${Date.now()}.${extension}`;
-      
+    try {
+      const blob = await exportToMP4(finalOptions, (progress, statusText) => {
+        setExportProgress(progress);
+        setExportStatus(statusText);
+      });
+
+      // Download the MP4 file
+      const filename = `${finalOptions.name.toLowerCase().replace(/[^a-z0-9_-]/g, '_') || 'video'}_${Date.now()}.mp4`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -361,42 +326,40 @@ export default function EditorLayout() {
       a.download = filename;
       document.body.appendChild(a);
       a.click();
+      
       setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      }, 100);
+      }, 150);
+
+      setExportProgress(100);
+      setExportStatus('MP4 Video Compiled!');
+
+      // Short delay for visual closure
+      await new Promise(resolve => setTimeout(resolve, 800));
       setIsExporting(false);
-      setCurrentTime(0);
-      
-      // Automatically clear the project after successful export
+
+      // Offer to clear project
       setConfirmModal({
         isOpen: true,
-        message: 'Video exported successfully! Would you like to clear the project and start a new one?',
+        message: 'Your MP4 video has been successfully encoded and downloaded! Would you like to clear the current timeline and start a new project?',
         onConfirm: () => {
           useEditorStore.getState().clearAll();
           setHasStarted(false);
           setConfirmModal(null);
         }
       });
-    };
-
-    mediaRecorder.start();
-    setIsPlaying(true);
-
-    // Stop recording when we reach the end
-    // Use setInterval to check the store's currentTime instead of a fixed timeout
-    const checkInterval = setInterval(() => {
-      const state = useEditorStore.getState();
-      const contentDuration = state.tracks.length > 0 
-        ? Math.max(...state.tracks.map(t => t.start + t.duration)) 
-        : state.duration;
-        
-      if (state.currentTime >= contentDuration) {
-        clearInterval(checkInterval);
-        mediaRecorder.stop();
-        state.setIsPlaying(false);
-      }
-    }, 100);
+    } catch (err: any) {
+      console.error(err);
+      setIsExporting(false);
+      setConfirmModal({
+        isOpen: true,
+        message: `Export failed: ${err.message || 'An unknown error occurred during rendering.'} Please make sure the video is fully loaded.`,
+        onConfirm: () => {
+          setConfirmModal(null);
+        }
+      });
+    }
   };
 
   const addTextLayer = () => {
@@ -505,25 +468,6 @@ export default function EditorLayout() {
       <AnimatePresence>
         {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
       </AnimatePresence>
-      
-      {/* Portrait Mode Overlay */}
-      <div className="md:hidden portrait:flex hidden fixed inset-0 z-[200] bg-[#121212] flex-col items-center justify-center p-6 text-center">
-        <div className="w-24 h-24 mb-8 relative">
-          <motion.div 
-            className="absolute inset-0 border-4 border-cyan-500 rounded-2xl"
-            animate={{ rotate: 90 }}
-            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-              <line x1="12" y1="18" x2="12.01" y2="18"></line>
-            </svg>
-          </div>
-        </div>
-        <h2 className="text-2xl font-bold text-white mb-2">Rotate your device</h2>
-        <p className="text-white/60">CFD Studio requires landscape mode for the best editing experience.</p>
-      </div>
 
       <div 
         className="h-screen bg-[#121212] flex flex-col text-white overflow-hidden font-sans relative"
@@ -556,24 +500,24 @@ export default function EditorLayout() {
         {/* Header */}
         <header 
           className={clsx(
-            "border-b border-white/10 flex items-center justify-between px-4 bg-[#1e1e1e] z-50 transition-all duration-500 ease-in-out shrink-0 relative",
-            isHeaderVisible ? "translate-y-0 h-14 opacity-100" : "-translate-y-full h-0 opacity-0 overflow-hidden border-transparent"
+            "border-b border-white/10 flex items-center justify-between px-3 bg-[#1e1e1e] z-50 transition-all duration-500 ease-in-out shrink-0 relative",
+            isHeaderVisible ? "translate-y-0 h-11 opacity-100" : "-translate-y-full h-0 opacity-0 overflow-hidden border-transparent"
           )}
           onMouseEnter={resetHeaderTimeout}
         >
           {isHeaderVisible && (
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-16 h-3 flex items-center justify-center cursor-pointer group hover:bg-black/20 rounded-b-xl z-[60] bg-[#1e1e1e] border-x border-b border-white/10"
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-14 h-2.5 flex items-center justify-center cursor-pointer group hover:bg-black/20 rounded-b-xl z-[60] bg-[#1e1e1e] border-x border-b border-white/10"
                  onMouseEnter={resetHeaderTimeout}
                  onTouchStart={resetHeaderTimeout}>
-              <div className="w-8 h-1 bg-white/20 group-hover:bg-white/50 rounded-full" />
+              <div className="w-6 h-1 bg-white/20 group-hover:bg-white/50 rounded-full" />
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-            <Scissors size={18} className="text-white" />
+          <div className="flex items-center gap-1.5">
+          <div className="w-7 h-7 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-md flex items-center justify-center">
+            <Scissors size={15} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight hidden sm:block">cfd studio</h1>
+          <h1 className="font-bold text-sm tracking-tight hidden sm:block">Timeline X</h1>
           <input
             type="file"
             ref={fileInputRef}
@@ -583,7 +527,7 @@ export default function EditorLayout() {
           />
         </div>
         
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button 
             onClick={() => {
               setConfirmModal({
@@ -596,26 +540,26 @@ export default function EditorLayout() {
                 }
               });
             }}
-            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg flex items-center gap-2 transition-colors"
+            className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-white rounded-md flex items-center gap-1.5 transition-colors text-xs"
           >
-            <Plus size={16} />
-            <span className="text-sm font-medium hidden sm:block">New</span>
+            <Plus size={14} />
+            <span className="font-medium hidden sm:block">New</span>
           </button>
 
           {isMobile && (
             <button 
               onClick={addTextLayer}
-              className="px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-500 rounded-lg flex items-center gap-2 transition-colors"
+              className="px-2.5 py-1 bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 rounded-md flex items-center gap-1.5 transition-colors text-xs"
             >
-              <Type size={16} />
-              <span className="text-sm font-medium hidden sm:block">Text</span>
+              <Type size={14} />
+              <span className="font-medium hidden sm:block">Text</span>
             </button>
           )}
 
           <select
             value={currentRatioLabel}
             onChange={handleRatioChange}
-            className="bg-[#252525] text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 outline-none focus:border-cyan-500 transition-colors"
+            className="bg-[#252525] text-white text-[11px] px-2 py-1 rounded-md border border-white/10 outline-none focus:border-cyan-500 transition-colors"
           >
             {aspectRatios.map(ratio => (
               <option key={ratio.label} value={ratio.label}>
@@ -624,10 +568,10 @@ export default function EditorLayout() {
             ))}
           </select>
 
-          <button className="px-4 py-1.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
+          <button className="px-2 py-1 text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors flex items-center gap-1 hidden md:flex">
             {isSaving ? (
               <>
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={12} className="animate-spin" />
                 Saving...
               </>
             ) : (
@@ -637,10 +581,10 @@ export default function EditorLayout() {
           <button 
             onClick={() => setShowExportModal(true)}
             disabled={isExporting}
-            className="px-4 py-1.5 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-black font-semibold rounded-full flex items-center gap-2 transition-colors"
+            className="px-3 py-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-black font-semibold text-xs rounded-full flex items-center gap-1.5 transition-colors"
           >
-            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {isExporting ? 'Exporting...' : 'Export 1080p'}
+            {isExporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {isExporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
       </header>
@@ -650,42 +594,76 @@ export default function EditorLayout() {
         onClose={() => setShowExportModal(false)}
         onExport={(options) => {
           setShowExportModal(false);
-          handleExport();
+          handleExport(options);
         }}
         duration={useEditorStore.getState().tracks.length > 0 ? Math.max(...useEditorStore.getState().tracks.map(t => t.start + t.duration)) : useEditorStore.getState().duration}
         sizeEstimate="about 7 MB"
       />
 
+      {/* Exporting Progress Dialog */}
+      <AnimatePresence>
+        {isExporting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[400] bg-black/90 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#18181b] border border-white/10 rounded-2xl p-8 max-w-md w-full shadow-2xl flex flex-col items-center text-center"
+            >
+              <div className="relative w-16 h-16 mb-6 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20" />
+                <div 
+                  className="absolute inset-0 rounded-full border-4 border-cyan-500 border-t-transparent animate-spin" 
+                  style={{ animationDuration: '1.2s' }}
+                />
+                <Download className="text-cyan-400" size={24} />
+              </div>
+              
+              <h3 className="text-lg font-semibold text-white mb-2">Compiling MP4 Video</h3>
+              <p className="text-white/60 text-xs mb-6 max-w-xs leading-relaxed">
+                Please keep this window active. We are rendering every timeline track, transition effect, and text layer frame-by-frame for maximum export quality.
+              </p>
+              
+              {/* Progress bar */}
+              <div className="w-full bg-white/5 rounded-full h-2 mb-3 overflow-hidden relative border border-white/5">
+                <motion.div 
+                  className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full"
+                  animate={{ width: `${exportProgress}%` }}
+                  transition={{ duration: 0.1 }}
+                />
+              </div>
+              
+              <div className="flex justify-between w-full text-[10px] text-white/50 mb-1">
+                <span>Rendering Progress</span>
+                <span className="font-semibold text-cyan-400">{exportProgress}%</span>
+              </div>
+              
+              <div className="text-xs font-medium text-white/80 h-6 overflow-hidden text-ellipsis w-full whitespace-nowrap mt-2 bg-white/5 py-1 px-3 rounded">
+                {exportStatus}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {!isMobile && <AssetLibrary />}
+      {/* Desktop View (md breakpoint and up) */}
+      <div className="hidden md:flex flex-1 overflow-hidden relative">
+        <AssetLibrary />
         
         <div className="flex-1 flex flex-col min-w-0">
           <Preview ref={previewRef} />
+          <VideoPreview />
           
           {/* Resizer */}
           <div 
             className="h-2 bg-white/5 hover:bg-cyan-500 cursor-row-resize transition-colors z-50 relative flex items-center justify-center"
             onMouseDown={handleResizerMouseDown}
-            onTouchStart={(e) => {
-              const touch = e.touches[0];
-              const startY = touch.clientY;
-              const startHeight = timelineHeight;
-              
-              const handleTouchMove = (moveEvent: TouchEvent) => {
-                const delta = startY - moveEvent.touches[0].clientY;
-                const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight - 100));
-                setTimelineHeight(newHeight);
-              };
-              
-              const handleTouchEnd = () => {
-                window.removeEventListener('touchmove', handleTouchMove);
-                window.removeEventListener('touchend', handleTouchEnd);
-              };
-              
-              window.addEventListener('touchmove', handleTouchMove);
-              window.addEventListener('touchend', handleTouchEnd);
-            }}
           >
             <div className="w-8 h-1 bg-white/20 rounded-full" />
             <div className="absolute inset-x-0 -top-2 -bottom-2" />
@@ -703,12 +681,10 @@ export default function EditorLayout() {
           )}
           onMouseEnter={resetPropertiesTimeout}
         >
-          {/* Interaction hit area for cursor near right edge */}
           {!isPropertiesVisible && (
             <div 
               className="absolute top-0 bottom-0 -left-6 w-6 z-[60] cursor-pointer"
               onMouseEnter={resetPropertiesTimeout}
-              onTouchStart={resetPropertiesTimeout}
             />
           )}
 
@@ -720,8 +696,7 @@ export default function EditorLayout() {
           >
             {isPropertiesVisible && (
               <div className="absolute top-1/2 -left-3 -translate-y-1/2 w-3 h-16 flex items-center justify-center cursor-pointer group hover:bg-black/20 rounded-l-xl z-[60] bg-[#1e1e1e] border-y border-l border-white/10"
-                   onMouseEnter={resetPropertiesTimeout}
-                   onTouchStart={resetPropertiesTimeout}>
+                   onMouseEnter={resetPropertiesTimeout}>
                 <div className="h-8 w-1 bg-white/20 group-hover:bg-white/50 rounded-full transition-colors" />
               </div>
             )}
@@ -730,6 +705,80 @@ export default function EditorLayout() {
               <PropertiesPanel />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Mobile View (< md breakpoint) */}
+      <div className="flex md:hidden flex-1 flex-col overflow-hidden relative">
+        {/* Top Section: Canvas Preview */}
+        <div className="h-[38vh] min-h-[200px] max-h-[360px] bg-[#0d0d0f] relative flex items-center justify-center border-b border-white/10 shrink-0 overflow-hidden">
+          <Preview ref={previewRef} />
+        </div>
+
+        {/* Mobile Navigation / Tab Selector */}
+        <div className="bg-[#18181b] border-b border-white/10 px-2 py-1.5 flex items-center justify-around shrink-0 z-20">
+          <button
+            onClick={() => setMobileTab('timeline')}
+            className={clsx(
+              "flex-1 py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-semibold transition-all",
+              mobileTab === 'timeline'
+                ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Film size={15} />
+            <span>Timeline</span>
+          </button>
+
+          <button
+            onClick={() => setMobileTab('media')}
+            className={clsx(
+              "flex-1 py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-semibold transition-all",
+              mobileTab === 'media'
+                ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <FolderPlus size={15} />
+            <span>Media & FX</span>
+          </button>
+
+          <button
+            onClick={() => setMobileTab('inspector')}
+            className={clsx(
+              "flex-1 py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-semibold transition-all relative",
+              mobileTab === 'inspector'
+                ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Sliders size={15} />
+            <span>Inspector</span>
+            {selectedItemId && (
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse absolute top-1.5 right-2" />
+            )}
+          </button>
+        </div>
+
+        {/* Bottom Section: Tab Content */}
+        <div className="flex-1 min-h-0 bg-[#141416] overflow-y-auto relative">
+          {mobileTab === 'timeline' && (
+            <div className="h-full">
+              <Timeline />
+            </div>
+          )}
+
+          {mobileTab === 'media' && (
+            <div className="h-full">
+              <AssetLibrary />
+            </div>
+          )}
+
+          {mobileTab === 'inspector' && (
+            <div className="h-full">
+              <PropertiesPanel />
+            </div>
+          )}
         </div>
       </div>
     </div>
